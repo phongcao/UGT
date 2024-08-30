@@ -562,7 +562,6 @@ void OnGamepadButton(VariantList *m_pVList)
 				{
 					LogMsg("Closing capture window");
 					GetMessageManager()->CallStaticFunction(TurnOffRenderDisplay, 200, NULL);
-
 				}
 			}
 
@@ -826,17 +825,20 @@ void TurnOffRenderDisplay(VariantList* pVList)
 	GetApp()->m_oldHWND = 0;
 }
 
+void OnShowWindow(VariantList* pVList)
+{
+	GetApp()->m_hotKeyHandler.OnShowWindow();
+}
+
 void OnTranslateButton()
 { 
-
-	if (GetApp()->GetCaptureMode() == CAPTURE_MODE_DRAGRECT)
-	{
-		LogMsg("Ignoring translate button, currently dragging rect");
-	}
+	//if (GetApp()->GetCaptureMode() == CAPTURE_MODE_DRAGRECT)
+	//{
+	//	LogMsg("Ignoring translate button, currently dragging rect");
+	//}
 
 	if (GetApp()->GetCaptureMode() == CAPTURE_MODE_WAITING)
 	{
-	
 		GetApp()->m_sig_kill_all_text();
 		GetApp()->m_pGameLogicComp->m_escapiManager.SetPauseCapture(true);
 
@@ -844,13 +846,15 @@ void OnTranslateButton()
 		MoveWindow(g_hWnd, GetApp()->m_window_pos_x, GetApp()->m_window_pos_y, GetApp()->m_capture_width, GetApp()->m_capture_height, false);
 		GetApp()->m_pGameLogicComp->StartProcessingFrameForText();
 		GetApp()->SetCaptureMode(CAPTURE_MODE_SHOWING);
-	
-		if (GetApp()->GetShared()->GetVar("check_disable_sounds")->GetUINT32() == 0)
-		{
-			AudioHandle handle = GetAudioManager()->Play("audio/wall.mp3");
-			GetAudioManager()->SetVol(handle, 0.34f);
-		}
 
+		// Hack: Auto turn off overlay
+		//GetMessageManager()->CallStaticFunction(TurnOffRenderDisplay, 10000, NULL);
+	
+		//if (GetApp()->GetShared()->GetVar("check_disable_sounds")->GetUINT32() == 0)
+		//{
+		//	AudioHandle handle = GetAudioManager()->Play("audio/wall.mp3");
+		//	GetAudioManager()->SetVol(handle, 0.34f);
+		//}
 
 		if (GetApp()->GetShared()->GetVar("check_invisible_mode")->GetUINT32() != 0)
 		{
@@ -859,9 +863,10 @@ void OnTranslateButton()
 		}
 		else
 		{
-			GetApp()->m_hotKeyHandler.OnShowWindow();
+			// Hack: Fixed screen flickering
+			//GetApp()->m_hotKeyHandler.OnShowWindow();	
+			GetMessageManager()->CallStaticFunction(OnShowWindow, 1000, NULL);
 		}
-
 	}
 	else
 	{
@@ -1270,11 +1275,11 @@ void App::OnLoadSurfaces()
 	else
 	{
 
-		if (m_captureMode == CAPTURE_MODE_SHOWING)
-		{
-			MoveWindow(g_hWnd, m_window_pos_x, m_window_pos_y, m_capture_width, m_capture_height, false);
-			GetApp()->m_hotKeyHandler.OnShowWindow();
-		}
+		//if (m_captureMode == CAPTURE_MODE_SHOWING)
+		//{
+		//	MoveWindow(g_hWnd, m_window_pos_x, m_window_pos_y, m_capture_width, m_capture_height, false);
+		//	GetApp()->m_hotKeyHandler.OnShowWindow();
+		//}
 	}
 }
 
@@ -1309,7 +1314,6 @@ void App::ScanSubArea()
 	}
 	
 	OnTranslateButton();
-
 }
 
 int DivisibleByFour(int num, int max)
@@ -1631,7 +1635,10 @@ bool App::LoadConfigFile()
 		m_window_pos_y = StringToInt(ts.GetParmString("window_pos_y", 1));
 		m_show_live_video = StringToInt(ts.GetParmString("show_live_video", 1));
 		m_google_api_key = ts.GetParmString("google_api_key", 1);
+		m_google_token = ts.GetParmString("google_token", 1);
 		m_deepl_api_key = ts.GetParmString("deepl_api_key", 1);
+		m_gpt_api_key = ts.GetParmString("gpt_api_key", 1);
+		m_microsoft_vision_api_key = ts.GetParmString("microsoft_vision_api_key", 1);
 		if (ts.GetParmString("deepl_api_url", 1) != "")
 		{
 			m_deepl_api_url = ts.GetParmString("deepl_api_url", 1);
@@ -1642,7 +1649,6 @@ bool App::LoadConfigFile()
 		 
 		m_log_capture_text_to_file = ts.GetParmString("log_capture_text_to_file", 1);
 		m_place_capture_text_on_clipboard = ts.GetParmString("place_capture_text_on_clipboard", 1);
-
 
 		audioDevice = ts.GetParmString("audio_device", 1);
 		if (ts.GetParmString("input_camera_device_id", 1) != "")
@@ -1684,12 +1690,31 @@ bool App::LoadConfigFile()
 		}
 
 		string translationEngine = ToLowerCaseString(ts.GetParmString("translation_engine", 1));
+		m_translationEngine = TRANSLATION_ENGINE_GOOGLE;
 		if (translationEngine == "deepl")
 		{
 			m_translationEngine = TRANSLATION_ENGINE_DEEPL;
 			LogMsg("Using Deepl for translation, I hope you set its API key.");
 		}
-		
+		else if (translationEngine == "gpt")
+		{
+			m_translationEngine = TRANSLATION_ENGINE_GPT;
+			LogMsg("Using Gpt for translation, I hope you set its API key.");
+		}
+		else if (translationEngine == "google_advanced")
+		{
+			m_translationEngine = TRANSLATION_ENGINE_GOOGLE_ADVANCED;
+			LogMsg("Using Google Advanced for translation, I hope you set its API key.");
+		}
+	
+		string visionEngine = ToLowerCaseString(ts.GetParmString("vision_engine", 1));
+		m_visionEngine = VISION_ENGINE_GOOGLE;
+		if (visionEngine == "microsoft")
+		{
+			m_visionEngine = VISION_ENGINE_MICROSOFT;
+			LogMsg("Using Microsoft Vision API for OCR, I hope you set its API key.");
+		}
+
 		if (ts.GetParmString("source_language_hint", 1) != "")
 		{
 			m_source_language_hint = ts.GetParmString("source_language_hint", 1);

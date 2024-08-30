@@ -83,6 +83,8 @@ public:
 	NetHTTP m_netHTTP;
 	std::vector<TextArea> m_textareas;
 	void StartProcessingFrameForText();
+	void InvokeGoogleVisionAPI(byte* fileData, unsigned int originalFileSize);
+	void InvokeMicrosoftVisionAPI(byte* fileData, unsigned int originalFileSize);
 	EscapiManager m_escapiManager;
 	WinDesktopCapture m_desktopCapture;
 	string m_status;
@@ -94,11 +96,14 @@ public:
 private:
 
 	bool ProcessParagraphGoogleWay(const cJSON* paragraph, TextArea& textArea);
+	bool ProcessParagraphMicrosoftWay(const cJSON* line, TextArea& textArea);
 	bool ReadFromParagraph(const cJSON *paragraph, TextArea &textArea);
 	void ConstructEntityFromTextArea(TextArea &textArea);
 	void ConstructEntitiesFromTextAreas();
 	void MergeWithPreviousTextIfNeeded(TextArea& textArea);
-	bool BuildDatabase(char *pJson);
+	bool BuildDatabase(char* pJson);
+	bool BuildDatabaseGoogleVision(char *pJson);
+	bool BuildDatabaseMicrosoftVision(char* pJson);
 	Entity* m_pSettingsIcon = NULL;
 	bool m_bCalledOnFinishedTranslations = false;
 

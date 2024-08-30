@@ -193,21 +193,6 @@
     <ClCompile Include="..\..\shared\util\Variant.cpp">
       <Filter>shared\util</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\shared\util\boost\libs\signals\src\connection.cpp">
-      <Filter>shared\util\Boost</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\shared\util\boost\libs\signals\src\named_slot_map.cpp">
-      <Filter>shared\util\Boost</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\shared\util\boost\libs\signals\src\signal_base.cpp">
-      <Filter>shared\util\Boost</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\shared\util\boost\libs\signals\src\slot.cpp">
-      <Filter>shared\util\Boost</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\shared\util\boost\libs\signals\src\trackable.cpp">
-      <Filter>shared\util\Boost</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\shared\Manager\Console.cpp">
       <Filter>shared\Manager</Filter>
     </ClCompile>

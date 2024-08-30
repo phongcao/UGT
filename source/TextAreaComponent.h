@@ -27,8 +27,10 @@ public:
 	virtual void OnAdd(Entity* pEnt);
 
 	void OnTouchStart(VariantList *pVList);
-	bool ReadTranslationFromJSONGoogle(char *pData);
+	bool ReadTranslationFromJSONGoogleBasic(char *pData);
+	bool ReadTranslationFromJSONGoogleAdvanced(char* pData);
 	bool ReadTranslationFromJSONDeepl(char* pData);
+	bool ReadTranslationFromJSONGpt(char* pData);
 	void OnUpdate(VariantList* pVList);
 	void DrawWordRectsForLine(LineInfo line);
 	void DrawHighlightRectIfAudioIsPlaying();
@@ -45,8 +47,10 @@ protected:
 
 	void StopSoundIfItWasPlaying();
 	bool ReadAudioFromJSON(char* pData);
-	void RequestTranslationGoogle();
+	void RequestTranslationGoogleBasic();
+	void RequestTranslationGoogleAdvanced();
 	void RequestTranslationDeepL();
+	void RequestTranslationGpt();
 	void RequestTranslation();
 	glColorBytes GetTextColor(bool bIsDialog);
 	void OnSelected(VariantList* pVList);
@@ -79,8 +83,6 @@ protected:
 	AudioHandle m_audioHandle = AUDIO_HANDLE_BLANK;
 	string m_fileNameToRemove;
 	string m_lastTTSLanguageTarget;
-	
 };
-
 
 #endif // TextAreaComponent_h__

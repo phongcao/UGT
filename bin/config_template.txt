@@ -11,6 +11,7 @@
 
 ;Note:  Don't share your google API key!  A google API key looks like (don't include quotes or anything):  AIzaSyAvhMEcxpKSBD25ze06p5AlU_IuYtZ2b_g
 google_api_key|yourownkeygoeshere
+google_token|yourtokengoeshere
 
 ;Optional DeepL API key. This requires that you register at deepl.com.  Even if you use deepl, you
 ;still need the Google key above as well, as that's still used for the OCR and text to speech features.
@@ -23,11 +24,21 @@ deepl_api_key|yourownkeygoeshere
 ;if you're using the paid version, use https://api.deepl.com
 deepl_api_url|https://api-free.deepl.com
 
-;Choose which API to use for text translations.  Valid options:  google, deepl.  If you use deepl, you must set your API key above.
+;Optional Gpt API key.
+;A deepL API key looks like (don't include quotes or anything): sk-proj-XyZLMnTAPqOKn_78BvFgHsJ_7HDeh9ZK1lGm58opRQDf10_YzaQnrCYdwVPFgoR2AxjUqVnqsM3LNmFHpLgP4T932pqvYYCR4aHdjPZqRv21RMpyYZlD-QzAzVWPQST_OdKLVnJvSr5XVEM4MzSyQ5w
+gpt_api_key|yourownkeygoeshere
+
+;Optional Microsoft Vision API key.
+microsoft_vision_api_key|yourownkeygoeshere
+
+;Choose which API to use for text translations.  Valid options:  google, deepl, gpt.  If you use deepl, you must set your API key above.
 ;Note: A hotkey to toggle translation engine is T, useful for comparing results
 ;While Deepl offers better translations, keep in mind it doesn't support as many target languages.  It's missing Korean and Hindi for example and will
 ;give a "Unsupport target_lang" error. Works great for Japanese though.
 translation_engine|google
+
+;Choose which API to use for OCR.  Valid options:  google, microsoft
+vision_engine|microsoft
 
 ;Set the mode to work in. 
 

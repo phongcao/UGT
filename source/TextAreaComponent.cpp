@@ -73,7 +73,6 @@ void TextAreaComponent::StopSoundIfItWasPlaying()
 
 void TextAreaComponent::RequestAudio(bool bUseSrcLanguage, bool bShowMessage)
 {
-
 	if (GetApp()->GetShared()->GetVar("check_src_audio")->GetUINT32() == 0)
 	{
 		bUseSrcLanguage = !bUseSrcLanguage;
@@ -232,9 +231,8 @@ bool TextAreaComponent::IsDownloadingAudio()
 	return false;
 }
 
-void TextAreaComponent::RequestTranslationGoogle()
+void TextAreaComponent::RequestTranslationGoogleBasic()
 {
-
 	string url = "https://translation.googleapis.com";
 	string urlappend = "language/translate/v2?key=" + GetApp()->GetGoogleKey();
 
@@ -251,7 +249,6 @@ void TextAreaComponent::RequestTranslationGoogle()
 	}
 	else
 	{
-
 		for (int i = 0; i < m_textArea.m_lines.size(); i++)
 		{
 			textToTranslate += m_textArea.m_lines[i].m_text + "\n";
@@ -281,9 +278,59 @@ void TextAreaComponent::RequestTranslationGoogle()
 	m_bWaitingForTranslation = true;
 }
 
+
+// Advanced
+void TextAreaComponent::RequestTranslationGoogleAdvanced()
+{
+	string url = "https://translation.googleapis.com";
+	string urlappend = "/v3/projects/compact-lacing-260204:translateText";
+	string destLanguage = GetApp()->m_target_language;
+	string textToTranslate;
+
+	if (IsDialog(true))
+	{
+		textToTranslate = m_textArea.rawText;
+	}
+	else
+	{
+		for (int i = 0; i < m_textArea.m_lines.size(); i++)
+		{
+			textToTranslate += m_textArea.m_lines[i].m_text + "\n";
+		}
+	}
+
+	// reate json
+	cJSON* contents = cJSON_CreateArray();
+	cJSON_AddItemToArray(contents, cJSON_CreateString(textToTranslate.c_str()));
+	cJSON* root = cJSON_CreateObject();
+	cJSON_AddItemToObject(root, "contents", contents);
+	cJSON_AddItemToObject(root, "sourceLanguageCode", cJSON_CreateString("ja"));
+	cJSON_AddItemToObject(root, "targetLanguageCode", cJSON_CreateString(destLanguage.c_str()));
+	cJSON_AddItemToObject(root, "mimeType", cJSON_CreateString("text/plain"));
+
+	string postData(cJSON_Print(root));
+
+#ifdef _DEBUG
+	//LogMsg(postData.c_str());
+	//let's see what we're sending, write it to a txt file so notepad can read the kanji or whatever right
+	FILE* fp = fopen("translation_request.txt", "wb");
+	fwrite(postData.c_str(), postData.length(), 1, fp);
+	fclose(fp);
+#endif
+
+	m_netHTTP.Setup(url, 80, urlappend, NetHTTP::END_OF_DATA_SIGNAL_HTTP);
+	vector<string> headers;
+	headers.push_back("Content-Type: application/json");
+	headers.push_back("x-goog-user-project: compact-lacing-260204");
+	headers.push_back("Authorization: Bearer " + GetApp()->GetGoogleToken());
+	m_netHTTP.SetCustomHeaders(headers);
+	m_netHTTP.AddPostData("", (const byte*)postData.c_str(), (int)postData.length());
+	m_netHTTP.Start();
+	m_bWaitingForTranslation = true;
+}
+
 void TextAreaComponent::RequestTranslationDeepL()
 {
-
 	if (GetApp()->GetDeepLKey().empty())
 	{
 		string error = "Can't do deepl translation, API key missing";
@@ -293,8 +340,6 @@ void TextAreaComponent::RequestTranslationDeepL()
 		return;
 	}
 
-	
-	
 	unsigned int originalFileSize = 0;
 
 	string sourceLanguage = m_textArea.language;
@@ -320,7 +365,6 @@ void TextAreaComponent::RequestTranslationDeepL()
 	}
 	string urlappend = "v2/translate";
 
-
 #ifdef _DEBUG
 	//LogMsg(textToTranslate.c_str());
 	//let's see what we're sending, write it to a txt file so notepad can read the kanji or whatever right
@@ -339,6 +383,56 @@ void TextAreaComponent::RequestTranslationDeepL()
 	m_bWaitingForTranslation = true;
 }
 
+void TextAreaComponent::RequestTranslationGpt()
+{
+	string url = "https://api.openai.com";
+	string urlappend = "v1/chat/completions";
+	string textToTranslate;
+
+	if (IsDialog(true))
+	{
+		textToTranslate = m_textArea.rawText;
+	}
+	else
+	{
+		for (int i = 0; i < m_textArea.m_lines.size(); i++)
+		{
+			textToTranslate += m_textArea.m_lines[i].m_text + "\n";
+		}
+	}
+
+	//create json
+	textToTranslate = "Translate the following texts to English. Only response with translated texts.\n\n" + textToTranslate;
+	cJSON* userMessage = cJSON_CreateObject();
+	cJSON_AddItemToObject(userMessage, "role", cJSON_CreateString("user"));
+	cJSON_AddItemToObject(userMessage, "content", cJSON_CreateString(textToTranslate.c_str()));
+	cJSON* messages = cJSON_CreateArray();
+	cJSON_AddItemToArray(messages, userMessage);
+	cJSON* root = cJSON_CreateObject();
+	cJSON_AddItemToObject(root, "model", cJSON_CreateString("gpt-4o-mini-2024-07-18"));
+	cJSON_AddItemToObject(root, "n", cJSON_CreateNumber(1));
+	cJSON_AddItemToObject(root, "messages", messages);
+	cJSON_AddItemToObject(root, "temperature", cJSON_CreateNumber(1));
+	cJSON_AddItemToObject(root, "max_tokens", cJSON_CreateNumber(256));
+	cJSON_AddItemToObject(root, "top_p", cJSON_CreateNumber(1));
+	cJSON_AddItemToObject(root, "frequency_penalty", cJSON_CreateNumber(0));
+	cJSON_AddItemToObject(root, "presence_penalty", cJSON_CreateNumber(0));
+	cJSON* response_format = cJSON_CreateObject();
+	cJSON_AddItemToObject(response_format, "type", cJSON_CreateString("text"));
+	cJSON_AddItemToObject(root, "response_format", response_format);
+	char* postData = cJSON_Print(root);
+
+	m_netHTTP.Setup(url, 80, urlappend, NetHTTP::END_OF_DATA_SIGNAL_HTTP);
+	vector<string> headers;
+	headers.push_back("Content-Type: application/json; charset=utf-8");
+	headers.push_back("Authorization: Bearer " + GetApp()->GetGptKey());
+	headers.push_back("Accept: application/json, text/plain");
+	m_netHTTP.SetCustomHeaders(headers);
+	m_netHTTP.AddPostData("", (const byte*)postData, (int)strlen(postData));
+	m_netHTTP.Start();
+	m_bWaitingForTranslation = true;
+}
+
 void TextAreaComponent::RequestTranslation()
 {
 	if (GetApp()->m_target_language == "00")
@@ -349,11 +443,19 @@ void TextAreaComponent::RequestTranslation()
 
 	if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_GOOGLE)
 	{
-		RequestTranslationGoogle();
+		RequestTranslationGoogleBasic();
 	}
-	else
+	else if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_DEEPL)
 	{
 		RequestTranslationDeepL();
+	}
+	else if(GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_GPT)
+	{
+		RequestTranslationGpt();
+	}
+	else if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_GOOGLE_ADVANCED)
+	{
+		RequestTranslationGoogleAdvanced();
 	}
 }
 
@@ -517,8 +619,14 @@ void TextAreaComponent::OnAdd(Entity *pEnt)
 	GetApp()->m_sig_kill_all_text.connect(1, boost::bind(&TextAreaComponent::OnKillAllText, this));
 }
 
+extern void TurnOffRenderDisplay(VariantList* pVList);
+
 void TextAreaComponent::OnTouchStart(VariantList *pVList)
 {
+	// Hack: Turn off overlay on click
+	GetMessageManager()->CallStaticFunction(TurnOffRenderDisplay, 200, NULL);
+	return;
+
 	TouchTrackInfo *pTouch = GetBaseApp()->GetTouch(pVList->Get(2).GetUINT32());
 	if (pTouch->WasHandled()) return;
 	uint32 fingerID = pVList->Get(2).GetUINT32();
@@ -879,9 +987,8 @@ void TextAreaComponent::RenderAsDialog(float defaultFontHeightOrZeroForAuto)
 
 }
 
-bool TextAreaComponent::ReadTranslationFromJSONGoogle(char *pData)
+bool TextAreaComponent::ReadTranslationFromJSONGoogleBasic(char *pData)
 {
-
 	m_bWaitingForTranslation = false;
 	cJSON *root = cJSON_Parse(pData);
 	cJSON *error = cJSON_GetObjectItemCaseSensitive(root, "error");
@@ -925,9 +1032,42 @@ bool TextAreaComponent::ReadTranslationFromJSONGoogle(char *pData)
 	return true;
 }
 
+bool TextAreaComponent::ReadTranslationFromJSONGoogleAdvanced(char* pData)
+{
+	m_bWaitingForTranslation = false;
+	cJSON* root = cJSON_Parse(pData);
+	cJSON* translations = cJSON_GetObjectItemCaseSensitive(root, "translations");
+	cJSON* translation;
+
+	cJSON_ArrayForEach(translation, translations)
+	{
+		cJSON* translatedText = cJSON_GetObjectItemCaseSensitive(translation, "translatedText");
+		if (m_pTextBox)
+			SetTextEntity(m_pTextBox, translatedText->valuestring);
+
+		SAFE_DELETE(m_pDestLanguageSurf);
+
+		float desiredHeight = m_textAreaRect.get_height();
+		m_translatedString = translatedText->valuestring;
+		float height = 0;
+		CL_Rectf tempRect = m_textAreaRect;
+		TweakForSending(m_translatedString, tempRect, height, true);
+
+		if (IsDialog(true))
+		{
+			RenderAsDialog(height);
+		}
+		else
+		{
+			RenderLineByLine();
+		}
+	}
+
+	return true;
+}
+
 bool TextAreaComponent::ReadTranslationFromJSONDeepl(char* pData)
 {
-
 	m_bWaitingForTranslation = false;
 	cJSON* root = cJSON_Parse(pData);
 	cJSON* error = cJSON_GetObjectItemCaseSensitive(root, "message");
@@ -975,6 +1115,48 @@ bool TextAreaComponent::ReadTranslationFromJSONDeepl(char* pData)
 		{
 			RenderLineByLine();
 		}
+	}
+
+	return true;
+}
+
+
+bool TextAreaComponent::ReadTranslationFromJSONGpt(char* pData)
+{
+	m_bWaitingForTranslation = false;
+	cJSON* root = cJSON_Parse(pData);
+
+	// jsonResponse["choices"][0]["message"]["content"].get<std::string>();
+	cJSON* translation = cJSON_GetObjectItemCaseSensitive(root, "choices");
+	translation = cJSON_GetArrayItem(translation, 0)->child->next; // "message"
+	translation = translation->child->next; // "content"
+
+	if (m_netHTTP.GetDownloadedBytes() < 5)
+	{
+		ShowQuickMessage("Deepl sent a blank reply?  Probably bad API key!");
+		return false;
+	}
+
+	if (m_pTextBox)
+		SetTextEntity(m_pTextBox, translation->valuestring);
+
+	SAFE_DELETE(m_pDestLanguageSurf);
+
+	float desiredHeight = m_textAreaRect.get_height();
+	m_translatedString = translation->valuestring;
+
+
+	float height = 0;
+	CL_Rectf tempRect = m_textAreaRect;
+	TweakForSending(m_translatedString, tempRect, height, true);
+
+	if (IsDialog(true))
+	{
+		RenderAsDialog(height);
+	}
+	else
+	{
+		RenderLineByLine();
 	}
 
 	return true;
@@ -1063,14 +1245,28 @@ void TextAreaComponent::OnUpdate(VariantList *pVList)
 
 		if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_GOOGLE)
 		{
-			if (!ReadTranslationFromJSONGoogle((char*)m_netHTTP.GetDownloadedData()))
+			if (!ReadTranslationFromJSONGoogleBasic((char*)m_netHTTP.GetDownloadedData()))
 			{
 				LogMsg("Error parsing json translation reply from google");
 			}
 		}
-		else
+		else if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_DEEPL)
 		{
 			if (!ReadTranslationFromJSONDeepl((char*)m_netHTTP.GetDownloadedData()))
+			{
+				LogMsg("Error parsing json translation reply from deepl");
+			}
+		}
+		else if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_GPT)
+		{
+			if (!ReadTranslationFromJSONGpt((char*)m_netHTTP.GetDownloadedData()))
+			{
+				LogMsg("Error parsing json translation reply from deepl");
+			}
+		}
+		else if (GetApp()->GetTranslationEngine() == TRANSLATION_ENGINE_GOOGLE_ADVANCED)
+		{
+			if (!ReadTranslationFromJSONGoogleAdvanced((char*)m_netHTTP.GetDownloadedData()))
 			{
 				LogMsg("Error parsing json translation reply from deepl");
 			}
