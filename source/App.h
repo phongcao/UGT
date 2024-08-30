@@ -42,9 +42,20 @@ enum eTranslationEngine
 {
 	TRANSLATION_ENGINE_GOOGLE,
 	TRANSLATION_ENGINE_DEEPL,
+	TRANSLATION_ENGINE_GPT,
+	TRANSLATION_ENGINE_GOOGLE_ADVANCED,
 
 	//add more above here
 	TRANSLATION_ENGINE_COUNT
+};
+
+enum eVisionEngine
+{
+	VISION_ENGINE_GOOGLE,
+	VISION_ENGINE_MICROSOFT,
+
+	//add more above here
+	VISION_ENGINE_COUNT
 };
 
 class LanguageSetting
@@ -120,7 +131,10 @@ public:
 	void HandleHotKeyPushed(HotKeySetting setting);
 	void OnExitApp(VariantList *pVarList);
 	string GetGoogleKey() { return m_google_api_key; }
+	string GetGoogleToken() { return m_google_token; }
 	string GetDeepLKey() { return m_deepl_api_key; }
+	string GetGptKey() { return m_gpt_api_key; }
+	string GetMicrosoftVisionKey() { return m_microsoft_vision_api_key; }
 	void StartHidingOverlays();
 	void HidingOverlayUpdate();
 	bool IsHidingOverlays() { return m_bHidingOverlays; }
@@ -129,8 +143,8 @@ public:
 	Variant* GetVarWithDefault(const string& varName, const Variant& var) { return m_varDB.GetVarWithDefault(varName, var); }
 
 	string m_target_language = "en";
-	boost::signal<void(void)> m_sig_target_language_changed;
-	boost::signal<void(void)> m_sig_kill_all_text;
+	boost::signals2::signal<void(void)> m_sig_target_language_changed;
+	boost::signals2::signal<void(void)> m_sig_kill_all_text;
 	AutoPlayManager* GetAutoPlayManager() { return m_pAutoPlayManager; }
 	ExportToHTML* GetExportToHTML() { return m_pExportToHTML; }
 
@@ -166,7 +180,10 @@ public:
 	int m_window_pos_y = 0;
 	int m_show_live_video = 0;
 	string m_google_api_key;
+	string m_google_token;
 	string m_deepl_api_key;
+	string m_gpt_api_key;
+	string m_microsoft_vision_api_key;
 	string m_deepl_api_url = "https://api-free.deepl.com"; //default
 	int m_jpg_quality_for_scan = 95;
 	string m_kanji_lookup_website = "https://jisho.org/search/";
@@ -188,6 +205,7 @@ public:
 	int m_versionNum;
 	string m_check_for_update_on_startup = "enabled";
 	eTranslationEngine GetTranslationEngine() { return m_translationEngine; }
+	eVisionEngine GetVisionEngine() { return m_visionEngine; }
 	string m_inputMode = "desktop";
 	void SetTargetLanguage(string languageCode, string languageName, bool bShowMessage = true);
 	void ModLanguageByIndex(int mod, bool bShowMessage = true);
@@ -200,6 +218,7 @@ public:
 	VariantDB m_varDB; //holds all data we want to save/load
 	WinDragRect *m_pWinDragRect;
 	eTranslationEngine m_translationEngine = TRANSLATION_ENGINE_GOOGLE;
+	eVisionEngine m_visionEngine = VISION_ENGINE_GOOGLE;
 	bool m_bTestMode = false;
 	int m_energy = 0;
 	GameLogicComponent *m_pGameLogicComp = NULL;

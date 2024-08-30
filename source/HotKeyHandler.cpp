@@ -155,6 +155,7 @@ void HotKeyHandler::OnShowWindow()
 	
 	win.showCmd = SW_SHOW;
 	SetWindowPlacement(g_hWnd, &win);
+
 	SetForegroundWindow(g_hWnd);
 }
 

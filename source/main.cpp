@@ -502,6 +502,8 @@ void OnSettingForGuiIfNeeded();
 void OnAppGotFocus();
 void OnAppLostFocus();
 
+extern void TurnOffRenderDisplay(VariantList* pVList);
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message)
@@ -556,9 +558,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	}
 
-
+	case WM_NCACTIVATE:
+		// Perform any custom processing here if needed
+		return 1;  // Returning 1 indicates that the non-client area should remain active
 
 	case WM_KILLFOCUS:
+		// Hack: close overlay when clicking any place
+		if (GetApp()->GetCaptureMode() == CAPTURE_MODE_SHOWING)
+		{
+			GetMessageManager()->CallStaticFunction(TurnOffRenderDisplay, 1000, NULL);
+		}
+
 		if (!g_bAppCanRunInBackground)
 		{
 			if (g_bHasFocus && IsBaseAppInitted() && g_hWnd)

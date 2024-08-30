@@ -160,14 +160,14 @@ void GameLogicComponent::OnAdd(Entity *pEnt)
 		StartProcessingFrameForText();
 		GetApp()->SetCaptureMode(CAPTURE_MODE_SHOWING);
 		
-		AudioHandle handle = GetAudioManager()->Play("audio/wall.mp3");
-		GetAudioManager()->SetVol(handle, 0.34f);
+		//AudioHandle handle = GetAudioManager()->Play("audio/wall.mp3");
+		//GetAudioManager()->SetVol(handle, 0.34f);
 
 		GetApp()->m_hotKeyHandler.OnShowWindow();
 
 	}
 
-	GetAudioManager()->Play("audio/intro.wav");
+	//GetAudioManager()->Play("audio/intro.wav");
 
 	if (GetApp()->IsInputDesktop())
 	{
@@ -436,10 +436,10 @@ void SetFourVertsFromAARect(CL_Rectf r, CL_Vec2f* verts)
 
 bool GameLogicComponent::ProcessParagraphGoogleWay(const cJSON* paragraph, TextArea& textArea)
 {
-
 	CL_Rect rectOfLastLine;
 	bool bRectSet = false;
 	int wordsProcessed = 0;
+
 	//get words
 	const cJSON* words = cJSON_GetObjectItemCaseSensitive(paragraph, "words");
 	const cJSON* word;
@@ -510,7 +510,6 @@ bool GameLogicComponent::ProcessParagraphGoogleWay(const cJSON* paragraph, TextA
 
 		if (!bRectSet)
 		{
-
 			//LogMsg("Setting rect for first word");
 			if (wordsProcessed == 0 && !bDidMergeWithPrevious)
 			{
@@ -702,8 +701,6 @@ cJSON_ArrayForEach(symbol, symbols)
 					bRectSet = false;
 				}
 			}
-			
-
 		}
 
 		wordsProcessed++;
@@ -717,18 +714,176 @@ cJSON_ArrayForEach(symbol, symbols)
 	return true;
 }
 
+bool GameLogicComponent::ProcessParagraphMicrosoftWay(const cJSON* line, TextArea& textArea)
+{
+	CL_Rect rectOfLastLine;
+	bool bRectSet = false;
+	int wordsProcessed = 0;
+
+	//get words
+	const cJSON* words = cJSON_GetObjectItemCaseSensitive(line, "words");
+	const cJSON* word;
+	string finalText;
+
+	CL_Vec2f lastVerts[4];
+	for (int i = 0; i < 4; i++)
+	{
+		lastVerts[i] = CL_Vec2f(0, 0);
+	}
+	CL_Rect totalRect;
+	vector<WordInfo> wordInfo;
+
+	string lineText;
+	string finalTextRaw;
+
+	bool bDidMergeWithPrevious = false;
+
+	cJSON_ArrayForEach(word, words)
+	{
+		//get the bounding box of this word
+		const cJSON* vertices = cJSON_GetObjectItemCaseSensitive(word, "boundingPolygon");
+		const cJSON* vert;
+
+		CL_Vec2f verts[4];
+		int vertCount = 0;
+
+		cJSON_ArrayForEach(vert, vertices)
+		{
+			float x, y;
+
+			cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
+			if (tempObj)
+			{
+				x = (float)tempObj->valuedouble;
+			}
+			else
+			{
+				x = 0;
+			}
+
+			tempObj = cJSON_GetObjectItem(vert, "y");
+			if (tempObj)
+			{
+				y = (float)tempObj->valuedouble;
+			}
+			else
+			{
+				y = 0;
+			}
+
+			verts[vertCount] = CL_Vec2f(x, y);
+			assert(verts[vertCount] >= 0);
+
+			vertCount++;
+		}
+
+		//remove any rotations to enforce axis-aligned rects
+		CL_Rectf r = GetAARectFromPoly(verts, 4);
+		SetFourVertsFromAARect(r, verts);
+
+		if (!bRectSet)
+		{
+			//LogMsg("Setting rect for first word");
+			if (wordsProcessed == 0 && !bDidMergeWithPrevious)
+			{
+				rectOfLastLine = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
+				totalRect = rectOfLastLine;
+			}
+			else
+			{
+				rectOfLastLine = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
+				totalRect.bounding_rect(rectOfLastLine);
+			}
+			bRectSet = true;
+		}
+		else
+		{
+			CL_Rect newWord = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
+
+			rectOfLastLine.bounding_rect(newWord);
+			totalRect.bounding_rect(newWord);
+		}
+
+		for (int i = 0; i < 4; i++)
+		{
+			lastVerts[i] = verts[i];
+		}
+
+		const cJSON* text = cJSON_GetObjectItemCaseSensitive(word, "text");
+		lineText += text->valuestring;
+		vertices = cJSON_GetObjectItemCaseSensitive(word, "boundingPolygon");
+		vertCount = 0;
+
+		cJSON_ArrayForEach(vert, vertices)
+		{
+			float x, y;
+
+			cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
+
+			if (tempObj)
+			{
+				x = (float)tempObj->valuedouble;
+			}
+			else
+			{
+				x = 0;
+			}
+
+			tempObj = cJSON_GetObjectItem(vert, "y");
+			if (tempObj)
+			{
+				y = (float)tempObj->valuedouble;
+			}
+			else
+			{
+				y = 0;
+			}
+
+			verts[vertCount] = CL_Vec2f(x, y);
+			vertCount++;
+		}
+
+		if (vertCount == 4)
+		{
+			WordInfo w;
+
+			w.m_rect = GetAARectFromPoly(verts, 4);
+			w.m_word = text->valuestring;
+			wordInfo.push_back(w);
+		}
+
+		LineInfo lineInfo;
+		lineInfo.m_lineRect = rectOfLastLine;
+		lineInfo.m_words = wordInfo; wordInfo.clear();
+		lineInfo.m_text = lineText;
+		textArea.m_lines.push_back(lineInfo);
+		textArea.m_lineStarts.push_back(rectOfLastLine.get_top_left());
+		finalText += lineText;
+		finalTextRaw += lineText;
+		lineText = "";
+		bRectSet = false;
+		wordsProcessed++;
+	}
+
+	textArea.text += finalText;
+	textArea.rawText += finalTextRaw;
+	utf8::utf8to16(finalTextRaw.begin(), finalTextRaw.end(), back_inserter(textArea.wideText));
+	textArea.m_rect = totalRect;
+
+	return true;
+}
 
 bool GameLogicComponent::ReadFromParagraph(const cJSON* paragraph, TextArea& textArea)
 {
-	
-	//We only need one of these... Google way trusts when google marks things as a wrap around with space or a new line.
-	ProcessParagraphGoogleWay(paragraph, textArea);
-
-	
-	//Manual way we figure it out ourselves
-	//ProcessParagraphManually(paragraph, textArea);
-
-
+	if (GetApp()->GetVisionEngine() == VISION_ENGINE_GOOGLE)
+	{
+		//We only need one of these... Google way trusts when google marks things as a wrap around with space or a new line.
+		ProcessParagraphGoogleWay(paragraph, textArea);
+	}
+	else
+	{
+		ProcessParagraphMicrosoftWay(paragraph, textArea);
+	}
 
 	MergeWithPreviousTextIfNeeded(textArea);
 
@@ -891,12 +1046,22 @@ void GameLogicComponent::ConstructEntitiesFromTextAreas()
 void GameLogicComponent::MergeWithPreviousTextIfNeeded(TextArea& textArea)
 {
 	if (m_textareas.empty()) return;
+}
 
-
+bool GameLogicComponent::BuildDatabase(char* pJson)
+{
+	if (GetApp()->GetVisionEngine() == VISION_ENGINE_GOOGLE)
+	{
+		return BuildDatabaseGoogleVision(pJson);
+	}
+	else
+	{
+		return BuildDatabaseMicrosoftVision(pJson);
+	}
 }
 
 
-bool GameLogicComponent::BuildDatabase(char *pJson)
+bool GameLogicComponent::BuildDatabaseGoogleVision(char *pJson)
 {
 	LogMsg("Parsing...");
 	UpdateStatusMessage("Parsing...");
@@ -917,7 +1082,6 @@ bool GameLogicComponent::BuildDatabase(char *pJson)
 
 	for (int i = 0; i < blockCount; i++)
 	{
-		
 		cJSON *block = cJSON_GetArrayItem(blocks, i);
 		cJSON *boundingBox = cJSON_GetObjectItem(block, "boundingBox");
 	
@@ -988,6 +1152,38 @@ bool GameLogicComponent::BuildDatabase(char *pJson)
 	return true; //ok
 }
 
+bool GameLogicComponent::BuildDatabaseMicrosoftVision(char* pJson)
+{
+	LogMsg("Parsing...");
+	UpdateStatusMessage("Parsing...");
+	cJSON* root = cJSON_Parse(pJson);
+
+	cJSON* readResult = cJSON_GetObjectItem(root, "readResult");
+	cJSON* blocks = cJSON_GetObjectItem(readResult, "blocks");
+	int blockCount = cJSON_GetArraySize(blocks);
+
+	for (int i = 0; i < blockCount; i++)
+	{
+		cJSON* block = cJSON_GetArrayItem(blocks, i);
+		const cJSON* line;
+		const cJSON* lines = cJSON_GetObjectItemCaseSensitive(block, "lines");
+
+		cJSON_ArrayForEach(line, lines)
+		{
+			TextArea textArea;
+			textArea.language = "ja";
+
+			ReadFromParagraph(line, textArea);
+			if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
+				m_textareas.push_back(textArea);
+		}
+	}
+
+	ConstructEntitiesFromTextAreas();
+	cJSON_Delete(root);
+	return true; //ok
+}
+
 void GameLogicComponent::StartProcessingFrameForText()
 {
 	GetApp()->m_sig_kill_all_text();
@@ -1000,7 +1196,6 @@ void GameLogicComponent::StartProcessingFrameForText()
 	{
 		GetApp()->StartHidingOverlays();
 	}
-
 
 	if (!g_fileName.empty())
 	{
@@ -1022,11 +1217,9 @@ void GameLogicComponent::StartProcessingFrameForText()
 			JPGSurfaceLoader jpg;
 			jpg.SaveToFile(m_desktopCapture.GetSoftSurface(), "temp.jpg", GetApp()->m_jpg_quality_for_scan);
 			m_desktopCapture.GetSoftSurface()->FlipY();
-
 		}
 		else
 		{
-
 			if (!m_escapiManager.GetSurface()->IsLoaded())
 			{
 				LogMsg("Can't process, no frame loaded");
@@ -1042,16 +1235,23 @@ void GameLogicComponent::StartProcessingFrameForText()
 			temp.FlipY();
 			jpg.SaveToFile(&temp, "temp.jpg", GetApp()->m_jpg_quality_for_scan);
 		}
+
 		//****************
 		fileData = LoadFileIntoMemoryBasic("temp.jpg", &originalFileSize);
 	}
 
-	ShowQuickMessage("Analyzing screen...");
+	if (GetApp()->GetVisionEngine() == VISION_ENGINE_GOOGLE)
+	{
+		InvokeGoogleVisionAPI(fileData, originalFileSize);
+	}
+	else
+	{
+		InvokeMicrosoftVisionAPI(fileData, originalFileSize);
+	}
+}
 
-
-
-	//m_escapiManager.GetSoftSurface()->WriteBMPOut("temp.bmp");
-
+void GameLogicComponent::InvokeGoogleVisionAPI(byte* fileData, unsigned int originalFileSize)
+{
 	string postDataOCR_a = R"({
       'requests': [
         {
@@ -1084,19 +1284,18 @@ void GameLogicComponent::StartProcessingFrameForText()
 		postDataOCR_c += hint;
 		postDataOCR_c += "']\n}";
 	}
- 
 
-string postDataOCR_d = R"(
+	string postDataOCR_d = R"(
         }
       ]
     }
 )";
 
 	string encodedImage = base64_encode(fileData, originalFileSize);
-	
+
 	SAFE_DELETE_ARRAY(fileData);
 
-	string requestWithEmbeddedFile = postDataOCR_a + encodedImage + postDataOCR_b+ postDataOCR_c+ postDataOCR_d;
+	string requestWithEmbeddedFile = postDataOCR_a + encodedImage + postDataOCR_b + postDataOCR_c + postDataOCR_d;
 	string url = "https://vision.googleapis.com";
 	string urlappend = "/v1/images:annotate?key=" + GetApp()->GetGoogleKey();
 	m_netHTTP.Setup(url, 80, urlappend, NetHTTP::END_OF_DATA_SIGNAL_HTTP);
@@ -1104,16 +1303,49 @@ string postDataOCR_d = R"(
 	m_netHTTP.Start();
 
 	UpdateStatusMessage("Sending image to google for OCR processing...");
+}
 
+// Function to read image file as binary
+std::vector<unsigned char> readFile(const std::string& filePath) {
+	FILE* file = fopen(filePath.c_str(), "rb");
+	if (!file) {
+		throw std::runtime_error("Unable to open file");
+	}
 
+	fseek(file, 0, SEEK_END);
+	long fileSize = ftell(file);
+	fseek(file, 0, SEEK_SET);
 
+	std::vector<unsigned char> buffer(fileSize);
+	fread(buffer.data(), 1, fileSize, file);
+	fclose(file);
+
+	return buffer;
+}
+
+byte* lastFileData = NULL;
+void GameLogicComponent::InvokeMicrosoftVisionAPI(byte* fileData, unsigned int originalFileSize)
+{
+	string url = "https://uat-ocr.cognitiveservices.azure.com";
+	string urlappend = "/computervision/imageanalysis:analyze?features=read&model-version=latest&language=ja&api-version=2024-02-01";
+	m_netHTTP.Setup(url, 80, urlappend, NetHTTP::END_OF_DATA_SIGNAL_HTTP);
+	vector<string> headers;
+	headers.push_back("Content-Type: application/octet-stream");
+	headers.push_back("Ocp-Apim-Subscription-Key: " + GetApp()->GetMicrosoftVisionKey());
+	m_netHTTP.SetCustomHeaders(headers);
+	m_netHTTP.StartPostImage(fileData, originalFileSize);
+
+	SAFE_DELETE_ARRAY(lastFileData);
+	lastFileData = fileData;
+
+	UpdateStatusMessage("Sending image to Microsoft for OCR processing...");
 }
 
 extern bool g_bHasFocus;
 
 void GameLogicComponent::UpdateStatusMessage(string msg)
 {
-	m_status = msg;
+	//m_status = msg;
 }
 
 void GameLogicComponent::OnUpdate(VariantList *pVList)
@@ -1164,9 +1396,8 @@ void GameLogicComponent::OnUpdate(VariantList *pVList)
 			s += " Downloading: (" + toString(bytes/1024) + "kb)";
 		}
 		UpdateStatusMessage(s);
-
-
 	}
+
 	if (m_netHTTP.GetState() == NetHTTP::STATE_FINISHED)
 	{
 #ifdef _DEBUG
@@ -1182,7 +1413,6 @@ void GameLogicComponent::OnUpdate(VariantList *pVList)
 
 		if (!BuildDatabase((char*)m_netHTTP.GetDownloadedData()))
 		{
-
 			TextScanner s;
 			s.AppendFromMemoryAddressRaw((char*)m_netHTTP.GetDownloadedData(), m_netHTTP.GetDownloadedBytes());
 			s.StripLeadingSpaces();
@@ -1201,7 +1431,8 @@ void GameLogicComponent::OnUpdate(VariantList *pVList)
 
 		m_netHTTP.Reset(true);
 
-		CreateExamineOverlay();
+		// Hack: Hide settings icon
+		//CreateExamineOverlay();
 	}
 
 
@@ -1246,15 +1477,13 @@ void GameLogicComponent::OnUpdate(VariantList *pVList)
 				OnTranslateButton();
 			}
 		}
-		UpdateStatusMessage(s);
 
-		
+		UpdateStatusMessage(s);
 	}
 }
 
 void GameLogicComponent::OnRender(VariantList *pVList)
 {
-
 	if (GetApp()->GetCaptureMode() == CAPTURE_MODE_WAITING)
 	{
 		KillExamineOverlay();
@@ -1262,10 +1491,8 @@ void GameLogicComponent::OnRender(VariantList *pVList)
 
 	if ( (GetApp()->m_show_live_video != 0) || GetApp()->GetCaptureMode() == CAPTURE_MODE_SHOWING)
 	{
-
 		if (GetApp()->IsInputDesktop())
 		{
-	
 			if ( (!m_desktopCapture.GetSurface()->IsLoaded()) && m_desktopCapture.GetSoftSurface()->IsActive())
 			{
 				m_desktopCapture.GetSurface()->InitFromSoftSurface(m_desktopCapture.GetSoftSurface());
@@ -1274,21 +1501,22 @@ void GameLogicComponent::OnRender(VariantList *pVList)
 			if (m_desktopCapture.GetSurface()->IsLoaded())
 			{
 				m_desktopCapture.GetSurface()->Blit(0, 0);
-				DrawRect(GetScreenRect(), MAKE_RGBA(150, 0, 0, 255), 3);
-				
-				CL_Rect r = GetScreenRect();
-				r.set_top_left(CL_Vec2i(GetScreenSizeX() - 82, GetScreenSizeY() - 20));
-				
-				if (GetScreenSizeYf() > 50)
-				{
-					//only show this help prompt if there is room
 
-				DrawFilledRect(r, MAKE_RGBA(0, 0, 0, 200));
-				string msg = "<Space or ?>";
+				// Hack: Hide red rectangle
+				//DrawRect(GetScreenRect(), MAKE_RGBA(150, 0, 0, 255), 3);
 				
-					GetApp()->GetFont(FONT_SMALL)->DrawAlignedSolidColor(GetScreenSizeXf() - 3, GetScreenSizeYf() - 3, msg,
-						ALIGNMENT_DOWN_RIGHT, 0.6f, MAKE_RGBA(200, 200, 200, 255), NULL, &g_globalBatcher);
-				}
+				// Hack: Hide "<Space or ?>"
+				//CL_Rect r = GetScreenRect();
+				//r.set_top_left(CL_Vec2i(GetScreenSizeX() - 82, GetScreenSizeY() - 20));
+				//
+				//if (GetScreenSizeYf() > 50)
+				//{
+				//	//only show this help prompt if there is room
+				//	DrawFilledRect(r, MAKE_RGBA(0, 0, 0, 200));
+				//	string msg = "<Space or ?>";
+				//	GetApp()->GetFont(FONT_SMALL)->DrawAlignedSolidColor(GetScreenSizeXf() - 3, GetScreenSizeYf() - 3, msg,
+				//		ALIGNMENT_DOWN_RIGHT, 0.6f, MAKE_RGBA(200, 200, 200, 255), NULL, &g_globalBatcher);
+				//}
 			}
 			else
 			{
@@ -1297,15 +1525,11 @@ void GameLogicComponent::OnRender(VariantList *pVList)
 		}
 		else
 		{
-
-			
-				if (m_escapiManager.GetSurface()->IsLoaded())
-				{
-					m_escapiManager.GetSurface()->Blit(0, 0);
-				}
-			
+			if (m_escapiManager.GetSurface()->IsLoaded())
+			{
+				m_escapiManager.GetSurface()->Blit(0, 0);
+			}
 		}
-		
 	}
 	else
 	{
@@ -1321,19 +1545,17 @@ void GameLogicComponent::OnRender(VariantList *pVList)
 	GetApp()->GetFont(FONT_LARGE)->DrawScaled(20, GetScreenSizeYf() - 100, "" + toString(GetApp()->m_energy), 2.0f, MAKE_RGBA(255, 255, 255, 255));
 	*/
 
+	//if (!m_status.empty())
+	//{
+	//	CL_Rect r = GetScreenRect();
+	//	r.set_top_left(CL_Vec2i(0, GetScreenSizeY() - 30));
+	//	//r.right = GetScreenSizeXf() - 300;
+	//	r.bottom = GetScreenSizeY() - 0;
 
-	if (!m_status.empty())
-	{
-		CL_Rect r = GetScreenRect();
-		r.set_top_left(CL_Vec2i(0, GetScreenSizeY() - 30));
-		//r.right = GetScreenSizeXf() - 300;
-		r.bottom = GetScreenSizeY() - 0;
+	//	DrawFilledRect(r, MAKE_RGBA(0, 0, 0, 200));
 
-		DrawFilledRect(r, MAKE_RGBA(0, 0, 0, 200));
-
-		GetApp()->GetFont(FONT_SMALL)->DrawAligned(GetScreenSizeXf() / 2, GetScreenSizeYf() - 5, m_status, ALIGNMENT_DOWN_CENTER, 1.0f, MAKE_RGBA(200,200,20,255), NULL, &g_globalBatcher);
-
-	}
+	//	GetApp()->GetFont(FONT_SMALL)->DrawAligned(GetScreenSizeXf() / 2, GetScreenSizeYf() - 5, m_status, ALIGNMENT_DOWN_CENTER, 1.0f, MAKE_RGBA(200,200,20,255), NULL, &g_globalBatcher);
+	//}
 }
 
 string MakeFileNameUnique(string fName)
@@ -1355,16 +1577,16 @@ void GameLogicComponent::OnTakeScreenshot()
 {
 	//if we are already displaying something, write that out
 	string fileName = MakeFileNameUnique("Screenshot");
-	GetAudioManager()->Play("audio/snapshot.wav");
+	//GetAudioManager()->Play("audio/snapshot.wav");
 
 	if (GetApp()->GetCaptureMode() == CAPTURE_MODE_SHOWING)
 	{
-			SoftSurface crap;
-			crap.Init(GetScreenSizeX(), GetScreenSizeY(), SoftSurface::SURFACE_RGB, false);
-			crap.BlitFromScreen(0, 0, 0, 0, GetScreenSizeX(), GetScreenSizeY());
-			crap.FlipY();
-			JPGSurfaceLoader jpg;
-			jpg.SaveToFile(&crap, fileName, GetApp()->m_jpg_quality_for_scan);
+		SoftSurface crap;
+		crap.Init(GetScreenSizeX(), GetScreenSizeY(), SoftSurface::SURFACE_RGB, false);
+		crap.BlitFromScreen(0, 0, 0, 0, GetScreenSizeX(), GetScreenSizeY());
+		crap.FlipY();
+		JPGSurfaceLoader jpg;
+		jpg.SaveToFile(&crap, fileName, GetApp()->m_jpg_quality_for_scan);
 	}
 	else
 	{
