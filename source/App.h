@@ -53,6 +53,7 @@ enum eVisionEngine
 {
 	VISION_ENGINE_GOOGLE,
 	VISION_ENGINE_MICROSOFT,
+	VISION_ENGINE_GPT,
 
 	//add more above here
 	VISION_ENGINE_COUNT
@@ -134,7 +135,12 @@ public:
 	string GetGoogleToken() { return m_google_token; }
 	string GetDeepLKey() { return m_deepl_api_key; }
 	string GetGptKey() { return m_gpt_api_key; }
+	string GetGptPrompt() { return m_gpt_prompt; }
 	string GetMicrosoftVisionKey() { return m_microsoft_vision_api_key; }
+	string GetMicrosoftVisionLanguage() { return m_microsoft_vision_language; }
+	int GetParagraphThresholdX() { return m_paragraph_threshold_x; }
+	int GetParagraphThresholdY() { return m_paragraph_threshold_y; }
+
 	void StartHidingOverlays();
 	void HidingOverlayUpdate();
 	bool IsHidingOverlays() { return m_bHidingOverlays; }
@@ -183,7 +189,11 @@ public:
 	string m_google_token;
 	string m_deepl_api_key;
 	string m_gpt_api_key;
+	string m_gpt_prompt;
 	string m_microsoft_vision_api_key;
+	string m_microsoft_vision_language;
+	int m_paragraph_threshold_x = 0;
+	int m_paragraph_threshold_y = 0;
 	string m_deepl_api_url = "https://api-free.deepl.com"; //default
 	int m_jpg_quality_for_scan = 95;
 	string m_kanji_lookup_website = "https://jisho.org/search/";

@@ -402,7 +402,7 @@ void TextAreaComponent::RequestTranslationGpt()
 	}
 
 	//create json
-	textToTranslate = "Translate the following texts to English. Only response with translated texts.\n\n" + textToTranslate;
+	textToTranslate =  GetApp()->GetGptPrompt() + "\n\n" + textToTranslate;
 	cJSON* userMessage = cJSON_CreateObject();
 	cJSON_AddItemToObject(userMessage, "role", cJSON_CreateString("user"));
 	cJSON_AddItemToObject(userMessage, "content", cJSON_CreateString(textToTranslate.c_str()));
@@ -857,8 +857,7 @@ void TextAreaComponent::TweakForSending(const string &text, CL_Rectf &rect, floa
 			LogMsg("Rect: %s", PrintRect(textRect).c_str());
 #endif
 
-			//     Mr. Tanaka
-
+			// Mr. Tanaka
 			if (height > m_textArea.m_averageTextHeight)
 			{
 				height = m_textArea.m_averageTextHeight;
@@ -1133,7 +1132,7 @@ bool TextAreaComponent::ReadTranslationFromJSONGpt(char* pData)
 
 	if (m_netHTTP.GetDownloadedBytes() < 5)
 	{
-		ShowQuickMessage("Deepl sent a blank reply?  Probably bad API key!");
+		ShowQuickMessage("Gpt sent a blank reply?  Probably bad API key!");
 		return false;
 	}
 

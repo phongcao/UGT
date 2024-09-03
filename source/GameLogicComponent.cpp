@@ -1,4 +1,4 @@
-#include "PlatformPrecomp.h"
+ï»¿#include "PlatformPrecomp.h"
 #include "GameLogicComponent.h"
 #include "App.h"
 #include "Entity/EntityUtils.h"
@@ -360,7 +360,6 @@ bool ProcessParagraphManually(const cJSON* paragraph, TextArea& textArea)
 					y = 0;
 				}
 
-				//assert(x >= 0 && y >= 0);
 				verts[vertCount] = CL_Vec2f(x, y);
 				vertCount++;
 			}
@@ -377,7 +376,8 @@ bool ProcessParagraphManually(const cJSON* paragraph, TextArea& textArea)
 	}
 
 	LineInfo lineInfo;
-	lineInfo.m_words = wordInfo; wordInfo.clear();
+	lineInfo.m_words = wordInfo;
+	wordInfo.clear();
 
 	lineInfo.m_lineRect = rectOfLastLine;
 	lineInfo.m_text = lineText;
@@ -714,155 +714,198 @@ cJSON_ArrayForEach(symbol, symbols)
 	return true;
 }
 
-bool GameLogicComponent::ProcessParagraphMicrosoftWay(const cJSON* line, TextArea& textArea)
+bool GameLogicComponent::ProcessParagraphMicrosoftWay(const cJSON* paragraph, TextArea& textArea)
 {
-	CL_Rect rectOfLastLine;
-	bool bRectSet = false;
-	int wordsProcessed = 0;
-
-	//get words
-	const cJSON* words = cJSON_GetObjectItemCaseSensitive(line, "words");
-	const cJSON* word;
-	string finalText;
-
-	CL_Vec2f lastVerts[4];
-	for (int i = 0; i < 4; i++)
-	{
-		lastVerts[i] = CL_Vec2f(0, 0);
-	}
 	CL_Rect totalRect;
 	vector<WordInfo> wordInfo;
-
 	string lineText;
+	string finalText;
 	string finalTextRaw;
-
-	bool bDidMergeWithPrevious = false;
-
-	cJSON_ArrayForEach(word, words)
+	bool bRectSet = false;
+	const cJSON* line;
+	int wordsProcessed = 0;
+	cJSON_ArrayForEach(line, paragraph)
 	{
-		//get the bounding box of this word
-		const cJSON* vertices = cJSON_GetObjectItemCaseSensitive(word, "boundingPolygon");
-		const cJSON* vert;
+		cJSON* lineNode = cJSON_GetArrayItem(line, 0);
+		CL_Rect rectOfLastLine;
 
-		CL_Vec2f verts[4];
-		int vertCount = 0;
+		// Get words
+		const cJSON* words = cJSON_GetObjectItemCaseSensitive(lineNode, "words");
+		const cJSON* word;
+		lineText = "";
+		bool bDidMergeWithPrevious = false;
 
-		cJSON_ArrayForEach(vert, vertices)
+		cJSON_ArrayForEach(word, words)
 		{
-			float x, y;
+			// Get the bounding box of this word
+			const cJSON* vertices = cJSON_GetObjectItemCaseSensitive(word, "boundingPolygon");
+			const cJSON* vert;
 
-			cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
-			if (tempObj)
+			CL_Vec2f verts[4];
+			int vertCount = 0;
+
+			// Read 4 vertices (x, y) of the word's bounding box
+			cJSON_ArrayForEach(vert, vertices)
 			{
-				x = (float)tempObj->valuedouble;
+				float x, y;
+				cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
+				x = tempObj ? (float)tempObj->valuedouble : 0;
+				tempObj = cJSON_GetObjectItem(vert, "y");
+				y = tempObj ? (float)tempObj->valuedouble : 0;
+				verts[vertCount] = CL_Vec2f(x, y);
+				assert(verts[vertCount] >= 0);
+				vertCount++;
+			}
+
+			// Build a rectangle from the above 4 vertices
+			// Remove any rotations to enforce axis-aligned rects
+			CL_Rectf r = GetAARectFromPoly(verts, 4);
+			SetFourVertsFromAARect(r, verts);
+
+			if (!bRectSet)
+			{
+				// Setting rect for first word
+				if (wordsProcessed == 0 && !bDidMergeWithPrevious)
+				{
+					// (Left, Top) -> (Right, Bottom)
+					rectOfLastLine = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
+					totalRect = rectOfLastLine;
+				}
+				else
+				{
+					rectOfLastLine = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
+					totalRect.bounding_rect(rectOfLastLine);
+				}
+
+				bRectSet = true;
 			}
 			else
 			{
-				x = 0;
+				CL_Rect newWord = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
+
+				rectOfLastLine.bounding_rect(newWord);
+				totalRect.bounding_rect(newWord);
 			}
 
-			tempObj = cJSON_GetObjectItem(vert, "y");
-			if (tempObj)
+			// Read the current word
+			const cJSON* text = cJSON_GetObjectItemCaseSensitive(word, "text");
+
+			// Append the word to the current line
+			lineText += text->valuestring;
+
+			// Add the current word to the wordInfo list
+			if (vertCount == 4)
 			{
-				y = (float)tempObj->valuedouble;
-			}
-			else
-			{
-				y = 0;
-			}
+				WordInfo w;
 
-			verts[vertCount] = CL_Vec2f(x, y);
-			assert(verts[vertCount] >= 0);
-
-			vertCount++;
-		}
-
-		//remove any rotations to enforce axis-aligned rects
-		CL_Rectf r = GetAARectFromPoly(verts, 4);
-		SetFourVertsFromAARect(r, verts);
-
-		if (!bRectSet)
-		{
-			//LogMsg("Setting rect for first word");
-			if (wordsProcessed == 0 && !bDidMergeWithPrevious)
-			{
-				rectOfLastLine = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
-				totalRect = rectOfLastLine;
-			}
-			else
-			{
-				rectOfLastLine = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
-				totalRect.bounding_rect(rectOfLastLine);
-			}
-			bRectSet = true;
-		}
-		else
-		{
-			CL_Rect newWord = CL_Rectf(verts[0].x, verts[0].y, verts[2].x, verts[2].y);
-
-			rectOfLastLine.bounding_rect(newWord);
-			totalRect.bounding_rect(newWord);
-		}
-
-		for (int i = 0; i < 4; i++)
-		{
-			lastVerts[i] = verts[i];
-		}
-
-		const cJSON* text = cJSON_GetObjectItemCaseSensitive(word, "text");
-		lineText += text->valuestring;
-		vertices = cJSON_GetObjectItemCaseSensitive(word, "boundingPolygon");
-		vertCount = 0;
-
-		cJSON_ArrayForEach(vert, vertices)
-		{
-			float x, y;
-
-			cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
-
-			if (tempObj)
-			{
-				x = (float)tempObj->valuedouble;
-			}
-			else
-			{
-				x = 0;
+				w.m_rect = GetAARectFromPoly(verts, 4);
+				w.m_word = text->valuestring;
+				wordInfo.push_back(w);
 			}
 
-			tempObj = cJSON_GetObjectItem(vert, "y");
-			if (tempObj)
-			{
-				y = (float)tempObj->valuedouble;
-			}
-			else
-			{
-				y = 0;
-			}
-
-			verts[vertCount] = CL_Vec2f(x, y);
-			vertCount++;
-		}
-
-		if (vertCount == 4)
-		{
-			WordInfo w;
-
-			w.m_rect = GetAARectFromPoly(verts, 4);
-			w.m_word = text->valuestring;
-			wordInfo.push_back(w);
+			wordsProcessed++;
 		}
 
 		LineInfo lineInfo;
 		lineInfo.m_lineRect = rectOfLastLine;
-		lineInfo.m_words = wordInfo; wordInfo.clear();
+		lineInfo.m_words = wordInfo;
+		wordInfo.clear();
 		lineInfo.m_text = lineText;
 		textArea.m_lines.push_back(lineInfo);
 		textArea.m_lineStarts.push_back(rectOfLastLine.get_top_left());
-		finalText += lineText;
-		finalTextRaw += lineText;
-		lineText = "";
+		finalText += lineText + "\n";
+		finalTextRaw += lineText + "\n";
 		bRectSet = false;
-		wordsProcessed++;
+	}
+
+	textArea.text += finalText;
+	textArea.rawText += finalTextRaw;
+	utf8::utf8to16(finalTextRaw.begin(), finalTextRaw.end(), back_inserter(textArea.wideText));
+	textArea.m_rect = totalRect;
+
+	return true;
+}
+
+// Function to trim leading and trailing spaces
+string Trim(const string& str) {
+	size_t start = str.find_first_not_of(' ');
+	size_t end = str.find_last_not_of(' ');
+
+	if (start == string::npos) // No content
+		return "";
+
+	return str.substr(start, end - start + 1);
+}
+
+// Function to split the string
+vector<WordInfo> SplitWords(const string& str, char delimiter) {
+	vector<WordInfo> words;
+	string token;
+	istringstream tokenStream(Trim(str));
+
+	while (std::getline(tokenStream, token, delimiter)) 
+	{
+		WordInfo word;
+		word.m_word = token;
+		words.push_back(word); // Trim the token before adding
+	}
+
+	return words;
+}
+
+bool GameLogicComponent::ProcessParagraphGptWay(const cJSON* paragraph, TextArea& textArea)
+{
+	CL_Rect totalRect;
+	string lineText;
+	string finalText;
+	string finalTextRaw;
+	const cJSON* line;
+	int w = GetApp()->m_capture_width - 50;
+	int h = GetApp()->m_capture_height - 50;
+	int numberOfLines = cJSON_GetArraySize(paragraph);
+	int lineH = h / numberOfLines;
+	int startY = 0;
+
+	cJSON_ArrayForEach(line, paragraph)
+	{
+		cJSON* lineNode = cJSON_GetArrayItem(line, 0);
+		CL_Rect rectOfLastLine;
+		lineText = "";
+
+		// Get the bounding box of this line
+		const cJSON* box = cJSON_GetObjectItemCaseSensitive(lineNode, "boundingBox");
+		//int l = cJSON_GetArrayItem(box, 0)->valueint / ratio;
+		//int t = cJSON_GetArrayItem(box, 1)->valueint / ratio;
+		//int r = cJSON_GetArrayItem(box, 2)->valueint / ratio;
+		//int b = cJSON_GetArrayItem(box, 3)->valueint / ratio;
+		int l = 0;
+		int r = w;
+		int t = startY;
+		int b = startY + lineH;
+
+		rectOfLastLine = CL_Rect(l, t, r, b);
+		totalRect.bounding_rect(rectOfLastLine);
+
+		// Append the word to the current line
+		lineText = cJSON_GetObjectItemCaseSensitive(lineNode, "line")->valuestring;
+
+		LineInfo lineInfo;
+		lineInfo.m_lineRect = rectOfLastLine;
+		lineInfo.m_text = lineText;
+		lineInfo.m_words = SplitWords(lineText, ' ');
+		int deltaX = (r - l) / lineInfo.m_words.size();
+		int startX = l;
+		for (int i = 0; i < lineInfo.m_words.size(); i++)
+		{
+			lineInfo.m_words[i].m_rect = CL_Rectf(startX, t, startX + deltaX, b);
+			startX += deltaX;
+		}
+
+		startY += lineH;
+		textArea.m_lines.push_back(lineInfo);
+		textArea.m_lineStarts.push_back(rectOfLastLine.get_top_left());
+		finalText += lineText + "\n";
+		finalTextRaw += lineText + "\n";
 	}
 
 	textArea.text += finalText;
@@ -880,9 +923,13 @@ bool GameLogicComponent::ReadFromParagraph(const cJSON* paragraph, TextArea& tex
 		//We only need one of these... Google way trusts when google marks things as a wrap around with space or a new line.
 		ProcessParagraphGoogleWay(paragraph, textArea);
 	}
-	else
+	else if (GetApp()->GetVisionEngine() == VISION_ENGINE_MICROSOFT)
 	{
 		ProcessParagraphMicrosoftWay(paragraph, textArea);
+	}
+	else
+	{
+		ProcessParagraphGptWay(paragraph, textArea);
 	}
 
 	MergeWithPreviousTextIfNeeded(textArea);
@@ -905,7 +952,7 @@ bool GameLogicComponent::ReadFromParagraph(const cJSON* paragraph, TextArea& tex
 
 	if (centeringFactorX > 0.8f && percentUsedOfScreenWidth > 0.35f)
 	{
-		//more likely to be dialog
+		// More likely to be dialog
 		isDialogFuzzyLogic += 1.0f;
 	}
 
@@ -916,7 +963,7 @@ bool GameLogicComponent::ReadFromParagraph(const cJSON* paragraph, TextArea& tex
 		LogMsg("percentUsedOfScreenWidth : %.2f  percentUsedOfScreenHeight: %.2f", percentUsedOfScreenWidth, percentUsedOfScreenHeight);
 	
 #endif
-		//recompute the rawtext to look better based on how the text is laid out
+	// Recompute the rawtext to look better based on how the text is laid out
 	if (textArea.m_lines.size() > 1)
 	{
 		string newFinal;
@@ -986,8 +1033,8 @@ bool GameLogicComponent::ReadFromParagraph(const cJSON* paragraph, TextArea& tex
 
 		for (int i = 0; i < textArea.wideText.size(); i++)
 		{
-			if (textArea.wideText[i] == ',' || textArea.wideText[i] == '.' || textArea.wideText[i] == L'B' ||
-				textArea.wideText[i] == L'A' || textArea.wideText[i] == L'u')
+			if (textArea.wideText[i] == ',' || textArea.wideText[i] == '.' || textArea.wideText[i] == L'ã€‚' ||
+				textArea.wideText[i] == L'ã€' || textArea.wideText[i] == L'ã€Œ')
 			{
 				isDialogFuzzyLogic += 1;
 			}
@@ -1054,9 +1101,13 @@ bool GameLogicComponent::BuildDatabase(char* pJson)
 	{
 		return BuildDatabaseGoogleVision(pJson);
 	}
-	else
+	else if (GetApp()->GetVisionEngine() == VISION_ENGINE_MICROSOFT)
 	{
 		return BuildDatabaseMicrosoftVision(pJson);
+	}
+	else
+	{
+		return BuildDatabaseGptVision(pJson);
 	}
 }
 
@@ -1084,72 +1135,288 @@ bool GameLogicComponent::BuildDatabaseGoogleVision(char *pJson)
 	{
 		cJSON *block = cJSON_GetArrayItem(blocks, i);
 		cJSON *boundingBox = cJSON_GetObjectItem(block, "boundingBox");
-	
-		cJSON *verts = cJSON_GetArrayItem(boundingBox, 0);
-		int vertCount = cJSON_GetArraySize(verts);
-		assert(vertCount == 4);
-		
-		for (int j = 0; j < vertCount; j++)
-		{
-			cJSON *vert = cJSON_GetArrayItem(verts, j);
-			float x = 0;
-			float y = 0;
-			cJSON *tempObj = cJSON_GetObjectItem(vert, "x");
-			if (tempObj) x = (float)tempObj->valuedouble;
-			tempObj = cJSON_GetObjectItem(vert, "y");
-			if (tempObj) y = (float)tempObj->valuedouble;
-			//textArea.m_vPoints[j] = CL_Vec2f(x, y);
-	
 
-			//LogMsg("Block %d, vert %d is X: %f and Y: %f", i, j, (float)x, (float)y);
-		}
-		
-		//textArea.m_rect = CL_Rectf(textArea.m_vPoints[0].x, textArea.m_vPoints[1].y, textArea.m_vPoints[2].x, textArea.m_vPoints[3].y);
-		//LogMsg("Setting final rect to %s", PrintRect(textArea.m_rect).c_str());
-		//note:  Here is where I updated my version of cJSON which has some changes...
+cJSON* verts = cJSON_GetArrayItem(boundingBox, 0);
+int vertCount = cJSON_GetArraySize(verts);
+assert(vertCount == 4);
 
-		//remember what language this block was
-		const cJSON *property = cJSON_GetObjectItemCaseSensitive(block, "property");
-		const cJSON *detectedLanguages = cJSON_GetObjectItemCaseSensitive(property, "detectedLanguages");
-		const cJSON *detectedLanguage;
+for (int j = 0; j < vertCount; j++)
+{
+	cJSON* vert = cJSON_GetArrayItem(verts, j);
+	float x = 0;
+	float y = 0;
+	cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
+	if (tempObj) x = (float)tempObj->valuedouble;
+	tempObj = cJSON_GetObjectItem(vert, "y");
+	if (tempObj) y = (float)tempObj->valuedouble;
+	//textArea.m_vPoints[j] = CL_Vec2f(x, y);
 
-		string myLanguage = "";
 
-		cJSON_ArrayForEach(detectedLanguage, detectedLanguages)
-		{
-			const cJSON *languageCode = cJSON_GetObjectItemCaseSensitive(detectedLanguage, "languageCode");
-			myLanguage = languageCode->valuestring;
-			//LogMsg("Found language %s", languageCode->valuestring);
-			//We can't really understand or handle more than one language,
-			//can we?  I guess just ignore if multiple languages are set.  Using the first instead of
-			//the last set as per Meerkov's suggestion
-			break;
-		}
-		
-		const cJSON *paragraph;
-		const cJSON *paragraphs = cJSON_GetObjectItemCaseSensitive(block, "paragraphs");
-		
-		int paraCount = 0;
+	//LogMsg("Block %d, vert %d is X: %f and Y: %f", i, j, (float)x, (float)y);
+}
 
-		cJSON_ArrayForEach(paragraph, paragraphs)
-		{
-			TextArea textArea;
-			textArea.language = myLanguage;
+//textArea.m_rect = CL_Rectf(textArea.m_vPoints[0].x, textArea.m_vPoints[1].y, textArea.m_vPoints[2].x, textArea.m_vPoints[3].y);
+//LogMsg("Setting final rect to %s", PrintRect(textArea.m_rect).c_str());
+//note:  Here is where I updated my version of cJSON which has some changes...
 
-			ReadFromParagraph(paragraph, textArea);
-			if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
-				m_textareas.push_back(textArea);
-			paraCount++;
-		}
+//remember what language this block was
+const cJSON* property = cJSON_GetObjectItemCaseSensitive(block, "property");
+const cJSON* detectedLanguages = cJSON_GetObjectItemCaseSensitive(property, "detectedLanguages");
+const cJSON* detectedLanguage;
+
+string myLanguage = "";
+
+cJSON_ArrayForEach(detectedLanguage, detectedLanguages)
+{
+	const cJSON* languageCode = cJSON_GetObjectItemCaseSensitive(detectedLanguage, "languageCode");
+	myLanguage = languageCode->valuestring;
+	//LogMsg("Found language %s", languageCode->valuestring);
+	//We can't really understand or handle more than one language,
+	//can we?  I guess just ignore if multiple languages are set.  Using the first instead of
+	//the last set as per Meerkov's suggestion
+	break;
+}
+
+const cJSON* paragraph;
+const cJSON* paragraphs = cJSON_GetObjectItemCaseSensitive(block, "paragraphs");
+
+int paraCount = 0;
+
+cJSON_ArrayForEach(paragraph, paragraphs)
+{
+	TextArea textArea;
+	textArea.language = myLanguage;
+
+	ReadFromParagraph(paragraph, textArea);
+	if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
+		m_textareas.push_back(textArea);
+	paraCount++;
+}
 
 #ifdef _DEBUG
-		//LogMsg("Got %s", textArea.text.c_str());
+//LogMsg("Got %s", textArea.text.c_str());
 #endif
 	}
 
 	ConstructEntitiesFromTextAreas();
 	cJSON_Delete(root);
 	return true; //ok
+}
+
+vector<vector<CL_Rect>> GroupByVerticalProximity(vector<CL_Rect> rects)
+{
+	sort(rects.begin(), rects.end(), [](const CL_Rect& a, const CL_Rect& b) {
+		return a.get_center().y < b.get_center().y;
+	});
+
+	vector<vector<CL_Rect>> groups;
+	for (int i = 0; i < rects.size(); i++)
+	{
+		CL_Rect r = rects[i];
+		bool added = false;
+		for (int j = 0; j < groups.size(); j++)
+		{
+			if (abs(r.get_center().y - groups[j].back().get_center().y) <= GetApp()->GetParagraphThresholdY())
+			{
+				added = true;
+				groups[j].push_back(r);
+				break;
+			}
+		}
+
+		if (!added)
+		{
+			vector<CL_Rect> g;
+			g.push_back(r);
+			groups.push_back(g);
+		}
+	}
+
+	return groups;
+}
+
+vector<vector<CL_Rect>> GroupByHorizontalProximity(vector<vector<CL_Rect>> groups)
+{
+	vector<vector<CL_Rect>> paragraphs;
+	for (int i = 0; i < groups.size(); i++)
+	{
+		vector<CL_Rect> paragraph;
+		vector<CL_Rect> group = groups[i];
+		sort(group.begin(), group.end(), [](const CL_Rect& a, const CL_Rect& b) {
+			return a.get_top_left().x < b.get_top_left().x;
+		});
+
+		for (int j = 0; j < group.size(); j++)
+		{
+			if (paragraph.size() && abs(paragraph.back().get_top_left().x - group[j].get_top_left().x) > GetApp()->GetParagraphThresholdX())
+			{
+				paragraphs.push_back(paragraph);
+				vector<CL_Rect> newParagraph;
+				newParagraph.push_back(group[j]);
+				paragraph = newParagraph;
+			}
+			else
+			{
+				paragraph.push_back(group[j]);
+			}
+		}
+
+		if (paragraph.size())
+		{
+			paragraphs.push_back(paragraph);
+		}
+	}
+
+	return paragraphs;
+}
+
+
+const cJSON* GameLogicComponent::BuildParagraphsMicrosoftVision(const cJSON* lines)
+{
+	const cJSON* line;
+	vector<CL_Rect> rects;
+
+	cJSON_ArrayForEach(line, lines)
+	{
+		const cJSON* vertices = cJSON_GetObjectItemCaseSensitive(line, "boundingPolygon");
+		const cJSON* vert;
+		CL_Vec2f verts[4];
+		int vertCount = 0;
+
+		// Read 4 vertices (x, y) of the text's bounding box
+		cJSON_ArrayForEach(vert, vertices)
+		{
+			float x, y;
+			cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
+			x = tempObj ? (float)tempObj->valuedouble : 0;
+			tempObj = cJSON_GetObjectItem(vert, "y");
+			y = tempObj ? (float)tempObj->valuedouble : 0;
+			verts[vertCount] = CL_Vec2f(x, y);
+			assert(verts[vertCount] >= 0);
+			vertCount++;
+		}
+
+		CL_Rectf r = GetAARectFromPoly(verts, 4);
+		rects.push_back(r);
+	}
+
+	vector<vector<CL_Rect>> groups = GroupByVerticalProximity(rects);
+	vector<vector<CL_Rect>> paragraphs = GroupByHorizontalProximity(groups);
+	
+	// Build Paragraphs JSON
+	cJSON* paragraphsJSON = cJSON_CreateArray();
+	for (int i = 0; i < paragraphs.size(); i++)
+	{
+		cJSON* paragraphJSON = cJSON_CreateArray();
+		for (int j = 0; j < paragraphs[i].size(); j++)
+		{
+			cJSON_ArrayForEach(line, lines)
+			{
+				string debug2(cJSON_Print(line));
+
+				const cJSON* vertices = cJSON_GetObjectItemCaseSensitive(line, "boundingPolygon");
+				const cJSON* vert;
+				CL_Vec2f verts[4];
+				int vertCount = 0;
+
+				// Read 4 vertices (x, y) of the text's bounding box
+				cJSON_ArrayForEach(vert, vertices)
+				{
+					float x, y;
+					cJSON* tempObj = cJSON_GetObjectItem(vert, "x");
+					x = tempObj ? (float)tempObj->valuedouble : 0;
+					tempObj = cJSON_GetObjectItem(vert, "y");
+					y = tempObj ? (float)tempObj->valuedouble : 0;
+					verts[vertCount] = CL_Vec2f(x, y);
+					vertCount++;
+				}
+
+				CL_Rectf r = GetAARectFromPoly(verts, 4);
+				if (r == paragraphs[i][j])
+				{
+					cJSON_AddItemToArray(paragraphJSON, cJSON_CreateObjectReference(line));
+					break;
+				}
+			}
+		}
+
+		cJSON_AddItemToArray(paragraphsJSON, paragraphJSON);
+	}
+
+#ifdef _DEBUG
+	int numberOfParagraphs = cJSON_GetArraySize(paragraphsJSON);
+	LogMsg("Number of paragraphs: %d", numberOfParagraphs);
+	const cJSON* paragraphJSON;
+	cJSON_ArrayForEach(paragraphJSON, paragraphsJSON)
+	{
+		int numberOfLines = cJSON_GetArraySize(paragraphJSON);
+		LogMsg("Number of lines: %d", numberOfLines);
+	}
+#endif
+
+	return paragraphsJSON;
+}
+
+const cJSON* GameLogicComponent::BuildParagraphsGptVision(const cJSON* lines)
+{
+	const cJSON* line;
+	vector<CL_Rect> rects;
+
+	cJSON_ArrayForEach(line, lines)
+	{
+		const cJSON* box = cJSON_GetObjectItemCaseSensitive(line, "boundingBox");
+
+
+		int l = cJSON_GetArrayItem(box, 0)->valueint;
+		int t = cJSON_GetArrayItem(box, 1)->valueint;
+		int r = cJSON_GetArrayItem(box, 2)->valueint;
+		int b = cJSON_GetArrayItem(box, 3)->valueint;
+		CL_Rect rect = CL_Rect(l, t, r, b);
+		rects.push_back(rect);
+	}
+
+	vector<vector<CL_Rect>> groups = GroupByVerticalProximity(rects);
+	vector<vector<CL_Rect>> paragraphs = GroupByHorizontalProximity(groups);
+
+	// Build Paragraphs JSON
+	cJSON* paragraphsJSON = cJSON_CreateArray();
+	for (int i = 0; i < paragraphs.size(); i++)
+	{
+		cJSON* paragraphJSON = cJSON_CreateArray();
+		for (int j = 0; j < paragraphs[i].size(); j++)
+		{
+			cJSON_ArrayForEach(line, lines)
+			{
+				const cJSON* box = cJSON_GetObjectItemCaseSensitive(line, "boundingBox");
+				int l = cJSON_GetArrayItem(box, 0)->valueint;
+				int t = cJSON_GetArrayItem(box, 1)->valueint;
+				int r = cJSON_GetArrayItem(box, 2)->valueint;
+				int b = cJSON_GetArrayItem(box, 3)->valueint;
+				CL_Rect rect = CL_Rect(l, t, r, b);
+
+				if (rect == paragraphs[i][j])
+				{
+					cJSON_AddItemToArray(paragraphJSON, cJSON_CreateObjectReference(line));
+					break;
+				}
+			}
+		}
+
+		cJSON_AddItemToArray(paragraphsJSON, paragraphJSON);
+	}
+
+#ifdef _DEBUG
+	int numberOfParagraphs = cJSON_GetArraySize(paragraphsJSON);
+	LogMsg("Number of paragraphs: %d", numberOfParagraphs);
+	const cJSON* paragraphJSON;
+	cJSON_ArrayForEach(paragraphJSON, paragraphsJSON)
+	{
+		int numberOfLines = cJSON_GetArraySize(paragraphJSON);
+		LogMsg("Number of lines: %d", numberOfLines);
+	}
+#endif
+
+	return paragraphsJSON;
 }
 
 bool GameLogicComponent::BuildDatabaseMicrosoftVision(char* pJson)
@@ -1160,23 +1427,61 @@ bool GameLogicComponent::BuildDatabaseMicrosoftVision(char* pJson)
 
 	cJSON* readResult = cJSON_GetObjectItem(root, "readResult");
 	cJSON* blocks = cJSON_GetObjectItem(readResult, "blocks");
-	int blockCount = cJSON_GetArraySize(blocks);
-
-	for (int i = 0; i < blockCount; i++)
+	cJSON* block = cJSON_GetArrayItem(blocks, 0);
+	cJSON* lines = cJSON_GetObjectItemCaseSensitive(block, "lines");
+	const cJSON* paragraphs = BuildParagraphsMicrosoftVision(lines);
+	const cJSON* paragraph;
+	cJSON_ArrayForEach(paragraph, paragraphs)
 	{
-		cJSON* block = cJSON_GetArrayItem(blocks, i);
-		const cJSON* line;
-		const cJSON* lines = cJSON_GetObjectItemCaseSensitive(block, "lines");
+		TextArea textArea;
+		textArea.language = "ja";
+		ReadFromParagraph(paragraph, textArea);
+		if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
+			m_textareas.push_back(textArea);
+	}
 
-		cJSON_ArrayForEach(line, lines)
-		{
-			TextArea textArea;
-			textArea.language = "ja";
+	ConstructEntitiesFromTextAreas();
+	cJSON_Delete(root);
+	return true; //ok
+}
 
-			ReadFromParagraph(line, textArea);
-			if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
-				m_textareas.push_back(textArea);
-		}
+bool GameLogicComponent::BuildDatabaseGptVision(char* pJson)
+{
+	LogMsg("Parsing...");
+	UpdateStatusMessage("Parsing...");
+	cJSON* root = cJSON_Parse(pJson);
+	cJSON* choices = cJSON_GetObjectItemCaseSensitive(root, "choices");
+	cJSON* message = cJSON_GetArrayItem(choices, 0)->child->next;
+	cJSON* content = message->child->next;
+	string paragraphStr = content->valuestring;
+
+	// Remove ```json
+	const string start = "```json";
+	if (paragraphStr.find(start) == 0)
+	{
+		paragraphStr.erase(0, start.length());
+	}
+
+	// Remove ```
+	const string end = "```";
+	if (paragraphStr.size() >= end.size() && paragraphStr.rfind(end) == paragraphStr.size() - end.size())
+	{
+		paragraphStr.erase(paragraphStr.size() - end.size(), end.size());
+	}
+
+	cJSON* blocks = cJSON_GetObjectItem(cJSON_Parse(paragraphStr.c_str()), "paragraphs");
+	cJSON* block = cJSON_GetArrayItem(blocks, 0);
+
+	cJSON* lines = cJSON_GetObjectItemCaseSensitive(block, "text");
+	const cJSON* paragraphs = BuildParagraphsGptVision(lines);
+	const cJSON* paragraph;
+	cJSON_ArrayForEach(paragraph, paragraphs)
+	{
+		TextArea textArea;
+		textArea.language = "en";
+		ReadFromParagraph(paragraph, textArea);
+		if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
+			m_textareas.push_back(textArea);
 	}
 
 	ConstructEntitiesFromTextAreas();
@@ -1214,8 +1519,22 @@ void GameLogicComponent::StartProcessingFrameForText()
 				assert(!"Huh?");
 			}
 			m_desktopCapture.GetSoftSurface()->FlipY();
+
+			// Scale screenshots
+			if (GetApp()->GetVisionEngine() == VISION_ENGINE_GPT)
+			{
+				m_desktopCapture.GetSoftSurface()->Scale(1024, 512);
+			}
+
 			JPGSurfaceLoader jpg;
 			jpg.SaveToFile(m_desktopCapture.GetSoftSurface(), "temp.jpg", GetApp()->m_jpg_quality_for_scan);
+
+			// Revert after saving file
+			if (GetApp()->GetVisionEngine() == VISION_ENGINE_GPT)
+			{
+				m_desktopCapture.GetSoftSurface()->Scale(GetApp()->m_capture_width, GetApp()->m_capture_height);
+			}
+
 			m_desktopCapture.GetSoftSurface()->FlipY();
 		}
 		else
@@ -1244,9 +1563,13 @@ void GameLogicComponent::StartProcessingFrameForText()
 	{
 		InvokeGoogleVisionAPI(fileData, originalFileSize);
 	}
-	else
+	else if (GetApp()->GetVisionEngine() == VISION_ENGINE_MICROSOFT)
 	{
 		InvokeMicrosoftVisionAPI(fileData, originalFileSize);
+	}
+	else
+	{
+		InvokeGptVisionAPI(fileData, originalFileSize);
 	}
 }
 
@@ -1339,6 +1662,56 @@ void GameLogicComponent::InvokeMicrosoftVisionAPI(byte* fileData, unsigned int o
 	lastFileData = fileData;
 
 	UpdateStatusMessage("Sending image to Microsoft for OCR processing...");
+}
+
+void GameLogicComponent::InvokeGptVisionAPI(byte* fileData, unsigned int originalFileSize)
+{
+	string url = "https://api.openai.com";
+	string urlappend = "v1/chat/completions";
+
+	//create json
+	string textToTranslate = GetApp()->GetGptPrompt() + "\nResponse with the following format:\n\n```json\n{\"width\": \"The width of the image\",\"height\": \"The height of the image\",\"paragraphs\": [{\"text\": [{\"line\": \"The translated text of a line\",\"boundingBox\": [The bounding polygon of a line]}]}]}\n\n- Try to keep the number of lines of the translated texts equal to the orignal texts.\n- The bounding boxes should align with the orignal texts.```";
+
+	cJSON* userMessage = cJSON_CreateObject();
+	cJSON_AddItemToObject(userMessage, "role", cJSON_CreateString("user"));
+	cJSON* contentArray = cJSON_CreateArray();
+	cJSON* userContent = cJSON_CreateObject();
+	cJSON_AddItemToObject(userContent, "type", cJSON_CreateString("text"));
+	cJSON_AddItemToObject(userContent, "text", cJSON_CreateString(textToTranslate.c_str()));
+	cJSON_AddItemToArray(contentArray, userContent);
+	cJSON* image = cJSON_CreateObject();
+	cJSON_AddItemToObject(image, "type", cJSON_CreateString("image_url"));
+	cJSON* imageUrl = cJSON_CreateObject();
+	string encodedImage = base64_encode(fileData, originalFileSize);
+	SAFE_DELETE_ARRAY(fileData);
+	string imageUrlStr = "data:image/jpeg;base64," + encodedImage;
+	cJSON_AddItemToObject(imageUrl, "url", cJSON_CreateString(imageUrlStr.c_str()));
+	cJSON_AddItemToObject(image, "image_url", imageUrl);
+	cJSON_AddItemToArray(contentArray, image);
+	cJSON_AddItemToObject(userMessage, "content", contentArray);
+
+	cJSON* messages = cJSON_CreateArray();
+	cJSON_AddItemToArray(messages, userMessage);
+	cJSON* root = cJSON_CreateObject();
+	cJSON_AddItemToObject(root, "model", cJSON_CreateString("gpt-4o-2024-08-06"));
+	cJSON_AddItemToObject(root, "n", cJSON_CreateNumber(1));
+	cJSON_AddItemToObject(root, "messages", messages);
+	cJSON_AddItemToObject(root, "temperature", cJSON_CreateNumber(0));
+	cJSON* response_format = cJSON_CreateObject();
+	cJSON_AddItemToObject(response_format, "type", cJSON_CreateString("text"));
+	cJSON_AddItemToObject(root, "response_format", response_format);
+	char* postData = cJSON_Print(root);
+
+	m_netHTTP.Setup(url, 80, urlappend, NetHTTP::END_OF_DATA_SIGNAL_HTTP);
+	vector<string> headers;
+	headers.push_back("Content-Type: application/json; charset=utf-8");
+	headers.push_back("Authorization: Bearer " + GetApp()->GetGptKey());
+	headers.push_back("Accept: application/json, text/plain");
+	m_netHTTP.SetCustomHeaders(headers);
+	m_netHTTP.AddPostData("", (const byte*)postData, (int)strlen(postData));
+	m_netHTTP.Start();
+
+	UpdateStatusMessage("Sending image to OpenAI for OCR processing...");
 }
 
 extern bool g_bHasFocus;

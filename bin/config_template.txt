@@ -37,8 +37,13 @@ microsoft_vision_api_key|yourownkeygoeshere
 ;give a "Unsupport target_lang" error. Works great for Japanese though.
 translation_engine|google
 
-;Choose which API to use for OCR.  Valid options:  google, microsoft
-vision_engine|microsoft
+;gpt translation prompt
+gpt_prompt|Please help me translate the in-game texts to English.
+
+;Choose which API to use for OCR.  Valid options:  google, Microsoft, gpt
+;vision_engine|google
+;vision_engine|microsoft
+vision_engine|gpt
 
 ;Set the mode to work in. 
 

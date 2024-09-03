@@ -85,6 +85,7 @@ public:
 	void StartProcessingFrameForText();
 	void InvokeGoogleVisionAPI(byte* fileData, unsigned int originalFileSize);
 	void InvokeMicrosoftVisionAPI(byte* fileData, unsigned int originalFileSize);
+	void InvokeGptVisionAPI(byte* fileData, unsigned int originalFileSize);
 	EscapiManager m_escapiManager;
 	WinDesktopCapture m_desktopCapture;
 	string m_status;
@@ -97,6 +98,7 @@ private:
 
 	bool ProcessParagraphGoogleWay(const cJSON* paragraph, TextArea& textArea);
 	bool ProcessParagraphMicrosoftWay(const cJSON* line, TextArea& textArea);
+	bool ProcessParagraphGptWay(const cJSON* line, TextArea& textArea);
 	bool ReadFromParagraph(const cJSON *paragraph, TextArea &textArea);
 	void ConstructEntityFromTextArea(TextArea &textArea);
 	void ConstructEntitiesFromTextAreas();
@@ -104,6 +106,9 @@ private:
 	bool BuildDatabase(char* pJson);
 	bool BuildDatabaseGoogleVision(char *pJson);
 	bool BuildDatabaseMicrosoftVision(char* pJson);
+	bool BuildDatabaseGptVision(char* pJson);
+	const cJSON* BuildParagraphsMicrosoftVision(const cJSON* lines);
+	const cJSON* BuildParagraphsGptVision(const cJSON* lines);
 	Entity* m_pSettingsIcon = NULL;
 	bool m_bCalledOnFinishedTranslations = false;
 
