@@ -1638,11 +1638,18 @@ bool App::LoadConfigFile()
 		m_google_token = ts.GetParmString("google_token", 1);
 		m_deepl_api_key = ts.GetParmString("deepl_api_key", 1);
 		m_gpt_api_key = ts.GetParmString("gpt_api_key", 1);
+		m_gpt_model_vision = ts.GetParmString("gpt_model_vision", 1);
+		m_gpt_model_translation = ts.GetParmString("gpt_model_translation", 1);
+		m_azure_openai_resource_name = ts.GetParmString("azure_openai_resource_name", 1);
+		m_azure_openai_api_version = ts.GetParmString("azure_openai_api_version", 1);
+		m_azure_openai_key = ts.GetParmString("azure_openai_key", 1);
+		m_use_azure_openai = StringToBool(ts.GetParmString("use_azure_openai", 1));
 		m_gpt_prompt = ts.GetParmString("gpt_prompt", 1);
 		m_microsoft_vision_api_key = ts.GetParmString("microsoft_vision_api_key", 1);
 		m_microsoft_vision_language = ts.GetParmString("microsoft_vision_language", 1);
 		m_paragraph_threshold_x = StringToInt(ts.GetParmString("paragraph_threshold_x", 1)); // Default = 50
 		m_paragraph_threshold_y = StringToInt(ts.GetParmString("paragraph_threshold_y", 1)); // Default = 150
+		m_max_words_per_line = StringToInt(ts.GetParmString("max_words_per_line", 1));
 		if (ts.GetParmString("deepl_api_url", 1) != "")
 		{
 			m_deepl_api_url = ts.GetParmString("deepl_api_url", 1);

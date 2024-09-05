@@ -409,7 +409,7 @@ void TextAreaComponent::RequestTranslationGpt()
 	cJSON* messages = cJSON_CreateArray();
 	cJSON_AddItemToArray(messages, userMessage);
 	cJSON* root = cJSON_CreateObject();
-	cJSON_AddItemToObject(root, "model", cJSON_CreateString("gpt-4o-mini-2024-07-18"));
+	cJSON_AddItemToObject(root, "model", cJSON_CreateString(GetApp()->GetGptModelForTranslation().c_str()));
 	cJSON_AddItemToObject(root, "n", cJSON_CreateNumber(1));
 	cJSON_AddItemToObject(root, "messages", messages);
 	cJSON_AddItemToObject(root, "temperature", cJSON_CreateNumber(1));

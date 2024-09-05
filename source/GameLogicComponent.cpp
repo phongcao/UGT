@@ -35,6 +35,7 @@ string g_fileName;
 #endif
 
 const string C_TRANSLATION_LOG_FILE = "translation_log.txt";
+clock_t gptVisionApiLatency = 0;
 
 GameLogicComponent::GameLogicComponent()
 {
@@ -868,26 +869,15 @@ bool GameLogicComponent::ProcessParagraphGptWay(const cJSON* paragraph, TextArea
 
 	cJSON_ArrayForEach(line, paragraph)
 	{
-		cJSON* lineNode = cJSON_GetArrayItem(line, 0);
 		CL_Rect rectOfLastLine;
-		lineText = "";
+		lineText = line->valuestring;
 
-		// Get the bounding box of this line
-		const cJSON* box = cJSON_GetObjectItemCaseSensitive(lineNode, "boundingBox");
-		//int l = cJSON_GetArrayItem(box, 0)->valueint / ratio;
-		//int t = cJSON_GetArrayItem(box, 1)->valueint / ratio;
-		//int r = cJSON_GetArrayItem(box, 2)->valueint / ratio;
-		//int b = cJSON_GetArrayItem(box, 3)->valueint / ratio;
 		int l = 0;
 		int r = w;
 		int t = startY;
 		int b = startY + lineH;
-
 		rectOfLastLine = CL_Rect(l, t, r, b);
 		totalRect.bounding_rect(rectOfLastLine);
-
-		// Append the word to the current line
-		lineText = cJSON_GetObjectItemCaseSensitive(lineNode, "line")->valuestring;
 
 		LineInfo lineInfo;
 		lineInfo.m_lineRect = rectOfLastLine;
@@ -1357,66 +1347,70 @@ const cJSON* GameLogicComponent::BuildParagraphsMicrosoftVision(const cJSON* lin
 	return paragraphsJSON;
 }
 
-const cJSON* GameLogicComponent::BuildParagraphsGptVision(const cJSON* lines)
-{
-	const cJSON* line;
-	vector<CL_Rect> rects;
+vector<string> SplitTextIntoLines(const string& input, int MAX_WORDS) {
+	vector<string> lines;
+	vector<string> lines2;
 
-	cJSON_ArrayForEach(line, lines)
+	// Split based on '\n'
+	istringstream iss(input);
+	if (input.find('\n') != string::npos) 
 	{
-		const cJSON* box = cJSON_GetObjectItemCaseSensitive(line, "boundingBox");
-
-
-		int l = cJSON_GetArrayItem(box, 0)->valueint;
-		int t = cJSON_GetArrayItem(box, 1)->valueint;
-		int r = cJSON_GetArrayItem(box, 2)->valueint;
-		int b = cJSON_GetArrayItem(box, 3)->valueint;
-		CL_Rect rect = CL_Rect(l, t, r, b);
-		rects.push_back(rect);
-	}
-
-	vector<vector<CL_Rect>> groups = GroupByVerticalProximity(rects);
-	vector<vector<CL_Rect>> paragraphs = GroupByHorizontalProximity(groups);
-
-	// Build Paragraphs JSON
-	cJSON* paragraphsJSON = cJSON_CreateArray();
-	for (int i = 0; i < paragraphs.size(); i++)
-	{
-		cJSON* paragraphJSON = cJSON_CreateArray();
-		for (int j = 0; j < paragraphs[i].size(); j++)
+		string line;
+		while (getline(iss, line)) 
 		{
-			cJSON_ArrayForEach(line, lines)
+			if (!line.empty())
 			{
-				const cJSON* box = cJSON_GetObjectItemCaseSensitive(line, "boundingBox");
-				int l = cJSON_GetArrayItem(box, 0)->valueint;
-				int t = cJSON_GetArrayItem(box, 1)->valueint;
-				int r = cJSON_GetArrayItem(box, 2)->valueint;
-				int b = cJSON_GetArrayItem(box, 3)->valueint;
-				CL_Rect rect = CL_Rect(l, t, r, b);
+				lines.push_back(line);
+			}
+		}
+	}
+	else
+	{
+		lines.push_back(input);
+	}
+	
+	// Split based on MAX_WORDS
+	for (int i = 0; i < lines.size(); i++)
+	{
+		string word;
+		string currentLine;
+		int wordCount = 0;
+		istringstream iss(lines[i]);
 
-				if (rect == paragraphs[i][j])
-				{
-					cJSON_AddItemToArray(paragraphJSON, cJSON_CreateObjectReference(line));
-					break;
-				}
+		while (iss >> word) 
+		{
+			currentLine += word + " ";
+			wordCount++;
+
+			if (wordCount == MAX_WORDS) 
+			{
+				lines2.push_back(currentLine);  // Add the current line to the vector
+				currentLine.clear();           // Reset the line
+				wordCount = 0;                 // Reset word count
 			}
 		}
 
-		cJSON_AddItemToArray(paragraphsJSON, paragraphJSON);
+		// If there are remaining words that didn't fill a full line
+		if (!currentLine.empty()) 
+		{
+			lines2.push_back(currentLine);
+		}
 	}
 
-#ifdef _DEBUG
-	int numberOfParagraphs = cJSON_GetArraySize(paragraphsJSON);
-	LogMsg("Number of paragraphs: %d", numberOfParagraphs);
-	const cJSON* paragraphJSON;
-	cJSON_ArrayForEach(paragraphJSON, paragraphsJSON)
+	return lines2;
+}
+
+const cJSON* GameLogicComponent::BuildParagraphsGptVision(const cJSON* content)
+{
+	string translatedText = content->valuestring;
+	vector<string> lines = SplitTextIntoLines(translatedText, GetApp()->GetMaxWordsPerLine());
+	cJSON* paragraph = cJSON_CreateArray();
+	for (int i = 0; i < lines.size(); i++)
 	{
-		int numberOfLines = cJSON_GetArraySize(paragraphJSON);
-		LogMsg("Number of lines: %d", numberOfLines);
+		cJSON_AddItemToArray(paragraph, cJSON_CreateString(lines[i].c_str()));
 	}
-#endif
 
-	return paragraphsJSON;
+	return paragraph;
 }
 
 bool GameLogicComponent::BuildDatabaseMicrosoftVision(char* pJson)
@@ -1447,46 +1441,46 @@ bool GameLogicComponent::BuildDatabaseMicrosoftVision(char* pJson)
 
 bool GameLogicComponent::BuildDatabaseGptVision(char* pJson)
 {
+	int duration = 1000.0 * (clock() - gptVisionApiLatency) / CLOCKS_PER_SEC;
+	LogMsg("GPT Vision Api Latency: %d", duration);
 	LogMsg("Parsing...");
 	UpdateStatusMessage("Parsing...");
 	cJSON* root = cJSON_Parse(pJson);
-	cJSON* choices = cJSON_GetObjectItemCaseSensitive(root, "choices");
-	cJSON* message = cJSON_GetArrayItem(choices, 0)->child->next;
-	cJSON* content = message->child->next;
-	string paragraphStr = content->valuestring;
+	cJSON* content;
 
-	// Remove ```json
-	const string start = "```json";
-	if (paragraphStr.find(start) == 0)
+	// Handle errors
+	if (cJSON_HasObjectItem(root, "error"))
 	{
-		paragraphStr.erase(0, start.length());
+		content = cJSON_CreateString("Error with chat completion API.");
+	}
+	else
+	{
+		cJSON* choice = cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root, "choices"), 0);
+		cJSON* message = cJSON_GetObjectItemCaseSensitive(choice, "message");
+		content = cJSON_GetObjectItemCaseSensitive(message, "content");
 	}
 
-	// Remove ```
-	const string end = "```";
-	if (paragraphStr.size() >= end.size() && paragraphStr.rfind(end) == paragraphStr.size() - end.size())
+	const cJSON* paragraph = BuildParagraphsGptVision(content);
+	TextArea textArea;
+	textArea.language = "en";
+	ReadFromParagraph(paragraph, textArea);
+	if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
 	{
-		paragraphStr.erase(paragraphStr.size() - end.size(), end.size());
-	}
-
-	cJSON* blocks = cJSON_GetObjectItem(cJSON_Parse(paragraphStr.c_str()), "paragraphs");
-	cJSON* block = cJSON_GetArrayItem(blocks, 0);
-
-	cJSON* lines = cJSON_GetObjectItemCaseSensitive(block, "text");
-	const cJSON* paragraphs = BuildParagraphsGptVision(lines);
-	const cJSON* paragraph;
-	cJSON_ArrayForEach(paragraph, paragraphs)
-	{
-		TextArea textArea;
-		textArea.language = "en";
-		ReadFromParagraph(paragraph, textArea);
-		if (textArea.m_rect.get_width() > 5 && textArea.m_rect.get_height() > 5)
-			m_textareas.push_back(textArea);
+		m_textareas.push_back(textArea);
 	}
 
 	ConstructEntitiesFromTextAreas();
 	cJSON_Delete(root);
-	return true; //ok
+	return true;
+}
+
+int RoundToNearestPowerOf2(float number) {
+	if (number <= 0) {
+		throw invalid_argument("Number must be greater than 0");
+	}
+
+	int exponent = round(log2(number));
+	return pow(2, exponent);
 }
 
 void GameLogicComponent::StartProcessingFrameForText()
@@ -1523,7 +1517,22 @@ void GameLogicComponent::StartProcessingFrameForText()
 			// Scale screenshots
 			if (GetApp()->GetVisionEngine() == VISION_ENGINE_GPT)
 			{
-				m_desktopCapture.GetSoftSurface()->Scale(1024, 512);
+				const float w = GetApp()->m_capture_width;
+				const float h = GetApp()->m_capture_height;
+				const float hRatio = w / h;
+				const float vRatio = h / w;
+				int scaleW = 512;
+				int scaleH = 512;
+				if (hRatio > 1.5)
+				{
+					scaleH = 512 / RoundToNearestPowerOf2(hRatio);
+				}
+				else if (vRatio > 1.5)
+				{
+					scaleW = 512 / RoundToNearestPowerOf2(vRatio);
+				}
+
+				m_desktopCapture.GetSoftSurface()->Scale(scaleW, scaleH);
 			}
 
 			JPGSurfaceLoader jpg;
@@ -1628,24 +1637,6 @@ void GameLogicComponent::InvokeGoogleVisionAPI(byte* fileData, unsigned int orig
 	UpdateStatusMessage("Sending image to google for OCR processing...");
 }
 
-// Function to read image file as binary
-std::vector<unsigned char> readFile(const std::string& filePath) {
-	FILE* file = fopen(filePath.c_str(), "rb");
-	if (!file) {
-		throw std::runtime_error("Unable to open file");
-	}
-
-	fseek(file, 0, SEEK_END);
-	long fileSize = ftell(file);
-	fseek(file, 0, SEEK_SET);
-
-	std::vector<unsigned char> buffer(fileSize);
-	fread(buffer.data(), 1, fileSize, file);
-	fclose(file);
-
-	return buffer;
-}
-
 byte* lastFileData = NULL;
 void GameLogicComponent::InvokeMicrosoftVisionAPI(byte* fileData, unsigned int originalFileSize)
 {
@@ -1666,18 +1657,29 @@ void GameLogicComponent::InvokeMicrosoftVisionAPI(byte* fileData, unsigned int o
 
 void GameLogicComponent::InvokeGptVisionAPI(byte* fileData, unsigned int originalFileSize)
 {
-	string url = "https://api.openai.com";
-	string urlappend = "v1/chat/completions";
+	gptVisionApiLatency = clock();
 
-	//create json
-	string textToTranslate = GetApp()->GetGptPrompt() + "\nResponse with the following format:\n\n```json\n{\"width\": \"The width of the image\",\"height\": \"The height of the image\",\"paragraphs\": [{\"text\": [{\"line\": \"The translated text of a line\",\"boundingBox\": [The bounding polygon of a line]}]}]}\n\n- Try to keep the number of lines of the translated texts equal to the orignal texts.\n- The bounding boxes should align with the orignal texts.```";
+	string url = "";
+	string urlappend = "";
+	if (!GetApp()->UseAzureOpenAI())
+	{
+		url = "https://api.openai.com";
+		urlappend = "v1/chat/completions";
+	}
+	else
+	{
+		url = "https://" + GetApp()->GetAzureOpenAIResourceName() + ".openai.azure.com";
+		urlappend = "openai/deployments/" + GetApp()->GetGptModelForVision() + "/chat/completions?api-version=" + GetApp()->GetAzureOpenAIApiVersion();
+	}
+
+	string prompt = GetApp()->GetGptPrompt();
 
 	cJSON* userMessage = cJSON_CreateObject();
 	cJSON_AddItemToObject(userMessage, "role", cJSON_CreateString("user"));
 	cJSON* contentArray = cJSON_CreateArray();
 	cJSON* userContent = cJSON_CreateObject();
 	cJSON_AddItemToObject(userContent, "type", cJSON_CreateString("text"));
-	cJSON_AddItemToObject(userContent, "text", cJSON_CreateString(textToTranslate.c_str()));
+	cJSON_AddItemToObject(userContent, "text", cJSON_CreateString(prompt.c_str()));
 	cJSON_AddItemToArray(contentArray, userContent);
 	cJSON* image = cJSON_CreateObject();
 	cJSON_AddItemToObject(image, "type", cJSON_CreateString("image_url"));
@@ -1686,6 +1688,7 @@ void GameLogicComponent::InvokeGptVisionAPI(byte* fileData, unsigned int origina
 	SAFE_DELETE_ARRAY(fileData);
 	string imageUrlStr = "data:image/jpeg;base64," + encodedImage;
 	cJSON_AddItemToObject(imageUrl, "url", cJSON_CreateString(imageUrlStr.c_str()));
+	cJSON_AddItemToObject(imageUrl, "detail", cJSON_CreateString("low"));
 	cJSON_AddItemToObject(image, "image_url", imageUrl);
 	cJSON_AddItemToArray(contentArray, image);
 	cJSON_AddItemToObject(userMessage, "content", contentArray);
@@ -1693,24 +1696,37 @@ void GameLogicComponent::InvokeGptVisionAPI(byte* fileData, unsigned int origina
 	cJSON* messages = cJSON_CreateArray();
 	cJSON_AddItemToArray(messages, userMessage);
 	cJSON* root = cJSON_CreateObject();
-	cJSON_AddItemToObject(root, "model", cJSON_CreateString("gpt-4o-2024-08-06"));
-	cJSON_AddItemToObject(root, "n", cJSON_CreateNumber(1));
+	if (!GetApp()->UseAzureOpenAI())
+	{
+		cJSON_AddItemToObject(root, "model", cJSON_CreateString(GetApp()->GetGptModelForVision().c_str()));
+	}
+
 	cJSON_AddItemToObject(root, "messages", messages);
 	cJSON_AddItemToObject(root, "temperature", cJSON_CreateNumber(0));
-	cJSON* response_format = cJSON_CreateObject();
-	cJSON_AddItemToObject(response_format, "type", cJSON_CreateString("text"));
-	cJSON_AddItemToObject(root, "response_format", response_format);
-	char* postData = cJSON_Print(root);
+	cJSON_AddItemToObject(root, "max_tokens", cJSON_CreateNumber(256));
+	if (!GetApp()->UseAzureOpenAI())
+	{
+		cJSON* response_format = cJSON_CreateObject();
+		cJSON_AddItemToObject(response_format, "type", cJSON_CreateString("text"));
+		cJSON_AddItemToObject(root, "response_format", response_format);
+	}
 
 	m_netHTTP.Setup(url, 80, urlappend, NetHTTP::END_OF_DATA_SIGNAL_HTTP);
 	vector<string> headers;
-	headers.push_back("Content-Type: application/json; charset=utf-8");
-	headers.push_back("Authorization: Bearer " + GetApp()->GetGptKey());
-	headers.push_back("Accept: application/json, text/plain");
+	headers.push_back("Content-Type: application/json");
+	if (!GetApp()->UseAzureOpenAI())
+	{
+		headers.push_back("Authorization: Bearer " + GetApp()->GetGptKey());
+	}
+	else
+	{
+		headers.push_back("api-key: " + GetApp()->GetAzureOpenAIKey());
+	}
+
 	m_netHTTP.SetCustomHeaders(headers);
+	char* postData = cJSON_Print(root);
 	m_netHTTP.AddPostData("", (const byte*)postData, (int)strlen(postData));
 	m_netHTTP.Start();
-
 	UpdateStatusMessage("Sending image to OpenAI for OCR processing...");
 }
 

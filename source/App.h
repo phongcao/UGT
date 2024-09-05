@@ -135,11 +135,18 @@ public:
 	string GetGoogleToken() { return m_google_token; }
 	string GetDeepLKey() { return m_deepl_api_key; }
 	string GetGptKey() { return m_gpt_api_key; }
+	string GetGptModelForVision() { return m_gpt_model_vision; }
+	string GetGptModelForTranslation() { return m_gpt_model_translation; }
+	string GetAzureOpenAIResourceName() { return m_azure_openai_resource_name; }
+	string GetAzureOpenAIApiVersion() { return m_azure_openai_api_version; }
+	string GetAzureOpenAIKey() { return m_azure_openai_key; }
 	string GetGptPrompt() { return m_gpt_prompt; }
 	string GetMicrosoftVisionKey() { return m_microsoft_vision_api_key; }
 	string GetMicrosoftVisionLanguage() { return m_microsoft_vision_language; }
 	int GetParagraphThresholdX() { return m_paragraph_threshold_x; }
 	int GetParagraphThresholdY() { return m_paragraph_threshold_y; }
+	int GetMaxWordsPerLine() { return m_max_words_per_line; }
+	bool UseAzureOpenAI() { return m_use_azure_openai; }
 
 	void StartHidingOverlays();
 	void HidingOverlayUpdate();
@@ -189,11 +196,18 @@ public:
 	string m_google_token;
 	string m_deepl_api_key;
 	string m_gpt_api_key;
+	string m_gpt_model_vision;
+	string m_gpt_model_translation;
+	string m_azure_openai_resource_name;
+	string m_azure_openai_api_version;
+	string m_azure_openai_key;
+	bool m_use_azure_openai;
 	string m_gpt_prompt;
 	string m_microsoft_vision_api_key;
 	string m_microsoft_vision_language;
 	int m_paragraph_threshold_x = 0;
 	int m_paragraph_threshold_y = 0;
+	int m_max_words_per_line = 0;
 	string m_deepl_api_url = "https://api-free.deepl.com"; //default
 	int m_jpg_quality_for_scan = 95;
 	string m_kanji_lookup_website = "https://jisho.org/search/";
